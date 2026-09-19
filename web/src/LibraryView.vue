@@ -32,7 +32,6 @@ const items = ref<Item[]>([]),
   snapshot = ref(0),
   selection = ref<string[]>([]),
   page = ref(0),
-  continuous = ref(false),
   saving = ref(false);
 const editDialog = ref<HTMLDialogElement>(),
   viewer = ref<HTMLDialogElement>(),
@@ -197,58 +196,51 @@ function persistProgress() {
         method: "PUT",
         body: jsonBody({ page: p }),
       }).catch(() => {
-        notice.value = "阅读进度暂未保存，连接恢复后翻页可重试。";
+        notice.value = "阅读进度暂未保存，连接恢复后继续滚动可重试。";
       });
   }, 400);
 }
-function turn(n: number) {
+function jumpToPage(n: number) {
   if (!detail.value || !Number.isFinite(n)) return;
   page.value = Math.max(0, Math.min(n, detail.value.pages.length - 1));
   persistProgress();
-  if (continuous.value)
-    document
-      .getElementById("comic-page-" + page.value)
-      ?.scrollIntoView({ block: "start", behavior: "instant" });
-  else window.scrollTo({ top: 0, behavior: "instant" });
-}
-function keyboard(e: KeyboardEvent) {
-  if (
-    e.target instanceof HTMLElement &&
-    e.target.closest("input,textarea,select,dialog[open]")
-  )
-    return;
-  if (
-    detail.value &&
-    isComic.value &&
-    (e.key === "ArrowLeft" || e.key === "ArrowRight")
-  ) {
-    e.preventDefault();
-    turn(page.value + (e.key === "ArrowLeft" ? -1 : 1));
-  }
-}
-async function observePages() {
-  readObserver?.disconnect();
-  if (!continuous.value) return;
-  const target = page.value;
-  await nextTick();
   document
-    .getElementById("comic-page-" + target)
+    .getElementById("comic-page-" + page.value)
     ?.scrollIntoView({ block: "start", behavior: "instant" });
+}
+function observePages(restore = true) {
+  readObserver?.disconnect();
+  const id = detail.value?.id;
+  if (!id || !isComic.value) return;
+  const target = page.value;
+  if (restore && target > 0)
+    document
+      .getElementById("comic-page-" + target)
+      ?.scrollIntoView({ block: "start", behavior: "instant" });
+  const visiblePages = new Set<number>();
+  const readingLine = Math.round(window.innerHeight * 0.4);
   readObserver = new IntersectionObserver(
     (entries) => {
-      const visible = entries
-        .filter((e) => e.isIntersecting)
-        .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-      if (visible) {
-        page.value = Number((visible.target as HTMLElement).dataset.page);
+      if (detail.value?.id !== id) return;
+      for (const entry of entries) {
+        const index = Number((entry.target as HTMLElement).dataset.page);
+        if (entry.isIntersecting) visiblePages.add(index);
+        else visiblePages.delete(index);
+      }
+      const current = Math.min(...visiblePages);
+      if (Number.isFinite(current) && current !== page.value) {
+        page.value = current;
         persistProgress();
       }
     },
-    { rootMargin: "-20% 0px -45% 0px" },
+    { rootMargin: `-${readingLine}px 0px -${window.innerHeight - readingLine - 1}px 0px` },
   );
   document
     .querySelectorAll(".comic-page")
     .forEach((el) => readObserver!.observe(el));
+}
+function resizeReader() {
+  observePages(false);
 }
 function refresh() {
   if (!props.itemId) void load();
@@ -259,7 +251,7 @@ watch(
     clearTimeout(progressTimer);
     detail.value = undefined;
     items.value = [];
-    continuous.value = false;
+    readObserver?.disconnect();
     query.value = "";
     selectedTags.value = [];
     random.value = false;
@@ -267,7 +259,6 @@ watch(
     void load();
   },
 );
-watch(continuous, observePages);
 watch(sentinel, (el) => {
   observer?.disconnect();
   if (el) {
@@ -284,7 +275,7 @@ watch(sentinel, (el) => {
 onMounted(() => {
   void load();
   window.addEventListener("library-changed", refresh);
-  window.addEventListener("keydown", keyboard);
+  window.addEventListener("resize", resizeReader);
 });
 onUnmounted(() => {
   generation++;
@@ -293,7 +284,7 @@ onUnmounted(() => {
   observer?.disconnect();
   readObserver?.disconnect();
   window.removeEventListener("library-changed", refresh);
-  window.removeEventListener("keydown", keyboard);
+  window.removeEventListener("resize", resizeReader);
 });
 </script>
 <template>
@@ -481,7 +472,7 @@ onUnmounted(() => {
           query || selectedTags.length
             ? "没有找到匹配的漫画"
             : isComic
-              ? "第一本漫画，等你放进来。"
+              ? "暂无漫画"
               : "暂无图片"
         }}
       </h2>
@@ -535,45 +526,20 @@ onUnmounted(() => {
         </button>
       </div>
     </section>
-    <div class="reader-controls panel">
-      <div class="segmented">
-        <button :aria-pressed="!continuous" @click="continuous = false">
-          逐页阅读</button
-        ><button :aria-pressed="continuous" @click="continuous = true">
-          连续阅读
-        </button>
-      </div>
-      <div class="reader-pagination">
-        <button
-          class="icon-button"
-          :disabled="page === 0"
-          aria-label="上一页"
-          @click="turn(page - 1)"
-        >
-          <Icon name="chevron-left" /></button
-        ><label
-          ><input
-            type="number"
-            :value="page + 1"
-            min="1"
-            :max="detail.pages.length"
-            aria-label="跳转页码"
-            @change="
-              turn(Number(($event.target as HTMLInputElement).value) - 1)
-            "
-          />
-          / {{ detail.pages.length }}</label
-        ><button
-          class="icon-button"
-          :disabled="page === detail.pages.length - 1"
-          aria-label="下一页"
-          @click="turn(page + 1)"
-        >
-          <Icon name="chevron-right" />
-        </button>
-      </div>
+    <div class="reader-controls" role="group" aria-label="阅读页码">
+      <label>
+        <input
+          type="number"
+          :value="page + 1"
+          min="1"
+          :max="detail.pages.length"
+          aria-label="跳转页码"
+          @change="jumpToPage(Number(($event.target as HTMLInputElement).value) - 1)"
+        />
+        <span>/ {{ detail.pages.length }}</span>
+      </label>
     </div>
-    <div v-if="continuous" class="continuous-reader">
+    <div class="continuous-reader">
       <figure
         v-for="(_, index) in detail.pages"
         :id="'comic-page-' + index"
@@ -586,21 +552,7 @@ onUnmounted(() => {
           :alt="'第 ' + (index + 1) + ' 页'"
           loading="lazy"
         />
-        <figcaption>{{ index + 1 }} / {{ detail.pages.length }}</figcaption>
       </figure>
-    </div>
-    <div v-else class="single-reader">
-      <img
-        :key="page"
-        :src="previewURL(detail, page, false)"
-        :alt="'第 ' + (page + 1) + ' 页'"
-      /><button
-        v-if="page < detail.pages.length - 1"
-        class="button secondary"
-        @click="turn(page + 1)"
-      >
-        下一页<Icon name="chevron-right" /></button
-      ><span v-else class="quiet-badge">已读到最后一页</span>
     </div>
   </template>
   <dialog ref="editDialog" class="edit-dialog">
