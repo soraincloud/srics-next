@@ -22,6 +22,7 @@ import (
 	"github.com/soraincloud/srics-next/internal/backup"
 	"github.com/soraincloud/srics-next/internal/library"
 	"github.com/soraincloud/srics-next/internal/media"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestLibraryHTTPAuthenticationAndFlow(t *testing.T) {
@@ -70,7 +71,20 @@ func TestLibraryHTTPAuthenticationAndFlow(t *testing.T) {
 			t.Fatal("unauthenticated route", path, code)
 		}
 	}
-	code, data := call("POST", "/api/auth/setup", []byte(`{"password":"synthetic-password-for-tests"}`), nil)
+	if code, _ := call("POST", "/api/auth/setup", []byte(`{"password":"synthetic-password-for-tests"}`), nil); code != 404 {
+		t.Fatal("HTTP password creation must be unavailable", code)
+	}
+	if hash, _ := l.Setting("password"); len(hash) != 0 {
+		t.Fatal("HTTP setup wrote a password")
+	}
+	loginHash, err := bcrypt.GenerateFromPassword([]byte("synthetic-password-for-tests"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Setup(loginHash); err != nil {
+		t.Fatal(err)
+	}
+	code, data := call("POST", "/api/auth/login", []byte(`{"password":"synthetic-password-for-tests"}`), nil)
 	if code != 200 {
 		t.Fatal(code, string(data))
 	}
@@ -79,7 +93,7 @@ func TestLibraryHTTPAuthenticationAndFlow(t *testing.T) {
 	}
 	json.Unmarshal(data, &auth)
 	csrf = auth.CSRF
-	if code, _ = call("POST", "/api/auth/setup", []byte(`{"password":"replacement-password"}`), nil); code != 409 {
+	if code, _ = call("POST", "/api/auth/setup", []byte(`{"password":"replacement-password"}`), nil); code != 404 {
 		t.Fatal("setup replaced existing login")
 	}
 	if code, _ = call("POST", "/api/uploads", []byte(`{}`), map[string]string{"X-SRICS-CSRF": ""}); code != 403 {

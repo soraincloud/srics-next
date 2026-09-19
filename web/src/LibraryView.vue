@@ -303,7 +303,7 @@ onUnmounted(() => {
       <p class="subtitle">{{ sub }}</p>
     </div>
     <span class="quiet-badge"
-      >{{ total }} {{ isComic ? "本收藏" : "张图片" }}</span
+      >{{ total }} {{ isComic ? "本漫画" : "张图片" }}</span
     >
   </section>
   <p v-if="notice" class="action-notice" role="status">
@@ -343,7 +343,7 @@ onUnmounted(() => {
           <Icon name="shuffle" />随机浏览
         </button>
       </div>
-      <p v-else class="subtle-copy">保留原件，记录你的每一个片段。</p>
+      <p v-else class="subtle-copy">保留照片原件与元数据</p>
       <button v-if="random" class="button secondary small" @click="load()">
         <Icon name="refresh" />换一批
       </button>
@@ -481,8 +481,8 @@ onUnmounted(() => {
           query || selectedTags.length
             ? "没有找到匹配的漫画"
             : isComic
-              ? "第一本收藏，等你放进来。"
-              : "给喜欢的画面，一个位置。"
+              ? "第一本漫画，等你放进来。"
+              : "暂无图片"
         }}
       </h2>
       <p>

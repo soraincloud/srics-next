@@ -1,7 +1,7 @@
 export const modules = [
   {
     id: "comics", name: "漫画", icon: "book", color: "orange", stage: "M2",
-    sub: "文件夹导入，按页阅读和收藏。", kind: "名称 · 标签 · 整本下载",
+    sub: "文件夹导入、按页阅读和下载。", kind: "名称 · 标签 · 整本下载",
     features: ["文件夹上传，按数字排列页序", "自定义名称、标签与组合搜索", "首页预览与连续阅读", "无损 WebP 转换、整本 ZIP 下载"],
   },
   {
@@ -11,17 +11,17 @@ export const modules = [
   },
   {
     id: "images", name: "图片", icon: "image", color: "green", stage: "M2",
-    sub: "保存喜欢的图片，随机发现灵感。", kind: "列表 · 随机浏览",
+    sub: "批量上传、列表与随机浏览。", kind: "列表 · 随机浏览",
     features: ["批量上传与原件下载", "列表浏览与随机照片墙", "同轮不重复的独立随机池", "无需名称、标签或搜索"],
   },
   {
     id: "photos", name: "个人照片", icon: "camera", color: "blue", stage: "M3",
-    sub: "保留照片原件，备份生活片段。", kind: "原件 · 照片备份",
+    sub: "原件上传、备份与下载。", kind: "原件 · 照片备份",
     features: ["保留原始字节与照片元数据", "批量上传、简单列表浏览", "分别显示上传状态与备份状态", "原件取回、回收站恢复"],
   },
   {
     id: "private", name: "私密照片", icon: "lock", color: "purple", stage: "M4",
-    sub: "独立解锁，浏览私密的回忆。", kind: "加密 · 随机浏览",
+    sub: "独立解锁、列表与随机浏览。", kind: "加密 · 随机浏览",
     features: ["原件、名称和预览加密保存", "解锁后列表浏览与随机浏览", "各设备独立解锁、闲置自动锁定", "加密备份与原件取回"],
   },
   {

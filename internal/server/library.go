@@ -118,7 +118,11 @@ func (a *LibraryAPI) auth(w http.ResponseWriter, r *http.Request) bool {
 		writeJSON(w, 200, map[string]any{"configured": len(hash) > 0, "authenticated": ok, "csrf": s.csrf})
 		return false
 	}
-	if r.URL.Path == "/api/auth/setup" || r.URL.Path == "/api/auth/login" {
+	if r.URL.Path == "/api/auth/setup" {
+		apiError(w, http.StatusNotFound, errors.New("请在本机程序中设置登录密码"))
+		return false
+	}
+	if r.URL.Path == "/api/auth/login" {
 		if r.Method != "POST" {
 			methodNotAllowed(w, "POST")
 			return false
@@ -149,24 +153,7 @@ func (a *LibraryAPI) auth(w http.ResponseWriter, r *http.Request) bool {
 			apiError(w, 503, err)
 			return false
 		}
-		if r.URL.Path == "/api/auth/setup" {
-			if len(hash) > 0 {
-				apiError(w, 409, errors.New("已完成初始化，请登录"))
-				return false
-			}
-			if len([]rune(body.Password)) < 12 {
-				apiError(w, 400, errors.New("请设置至少 12 个字符的登录密码"))
-				return false
-			}
-			hash, err = bcrypt.GenerateFromPassword([]byte(body.Password), 12)
-			if err == nil {
-				err = a.store.Setup(hash)
-			}
-			if err != nil {
-				apiError(w, 409, err)
-				return false
-			}
-		} else if len(hash) == 0 || bcrypt.CompareHashAndPassword(hash, []byte(body.Password)) != nil {
+		if len(hash) == 0 || bcrypt.CompareHashAndPassword(hash, []byte(body.Password)) != nil {
 			a.failures++
 			if a.failures >= 5 {
 				a.nextLogin = time.Now().Add(time.Duration(min(a.failures, 60)) * time.Second)

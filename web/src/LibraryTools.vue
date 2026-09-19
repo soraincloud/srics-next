@@ -83,8 +83,8 @@ onUnmounted(() => {
       <p class="subtitle">
         {{
           page === "trash"
-            ? "放错位置，或暂时不需要的收藏，都可以找回来。"
-            : "上传完成之后，再留一份独立的加密副本。"
+            ? "恢复已删除的资料。"
+            : "创建和检查资料库的加密备份。"
         }}
       </p>
     </div>
@@ -135,7 +135,7 @@ onUnmounted(() => {
             backup.running
               ? "正在保存备份"
               : !backup.configured
-                ? "先连接一个备份位置"
+                ? "未配置备份"
                 : backup.last?.status === "passed"
                   ? "最近一次备份已完成"
                   : backup.last?.status === "failed"
@@ -179,16 +179,8 @@ onUnmounted(() => {
       {{ backup.last.error }}
     </p>
     <section v-if="!backup.configured" class="backup-setup panel">
-      <h2>在启动服务前配置</h2>
-      <p>
-        指定备份目录和独立口令文件，重启后即可在这里备份。口令至少 12
-        个字符，请在设备之外另外保存。
-      </p>
-      <pre>
-export SRICS_BACKUP_REPOSITORY='/Volumes/Backup/SRICS'
-export SRICS_BACKUP_PASSWORD_FILE='/你的安全目录/backup-password.txt'
-./start.command</pre
-      >
+      <h2>备份配置</h2>
+      <p>在本机 SRICS Next 程序中选择备份目录和口令文件，保存并启动服务。</p>
       <p>
         同一硬盘上的备份只能用于流程测试。云端备份与自动计划将在发布阶段接入。
       </p>

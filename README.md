@@ -6,17 +6,21 @@
 
 本次交付、启动配置、备份恢复和限制见 [第一批功能记录](docs/M1_M2_LIBRARY.md)；底层技术验证见 [M0 开发记录](docs/M0_FOUNDATION.md)。下文完整六类业务与部署方案仍是首版目标。
 
-本机开发启动（macOS / Apple Silicon；需要 Go 1.26.5+、Node.js 22.12+ 或 24+、Xcode Command Line Tools）：
+本机程序（macOS）：双击 `dist/SRICS Next.app`，在窗口中设置登录密码、资料目录和可选备份配置，点击“保存并启动”。之后一键启动、停止或打开资料库。关闭窗口不会停止后台服务；网页只保留登录，没有密码创建入口。
+
+从源码构建（当前机器架构，需要 Go 1.26.5+、Node.js 22.12+ 或 24+、Xcode Command Line Tools）：
 
 ```sh
 brew install webp restic
-./scripts/build.sh
+./scripts/package-macos.sh
 ./start.command
 ```
 
-构建后可直接双击 `start.command`。页面位于 `http://127.0.0.1:19473`；Go 程序已内嵌前端，运行时不需要 Node.js。当前编码器和 restic 从本机安装读取，随发布包交付依赖及正式安装向导属于 M5。
+程序包内含前端、Go 服务、cwebp、restic 及其动态库。构建完成后运行不需要 Go、Node.js 或 Homebrew；`start.command` 也可直接打开配置窗口。当前是本机构建、临时签名的开发包，尚未完成 Apple 公证或其他设备兼容性验收。
 
-首次打开由你设置登录密码；没有默认密码。默认资料保存在操作系统应用数据目录中的 `SRICS Next/library`。进入“样本验证”并点击“开始验证”，会生成隔离测试资料，运行 11 项检查并清理样本。也可执行 `./bin/srics verify`，或运行 `./scripts/check.sh` 完成构建、静态检查、并发测试和恢复集成测试。验证失败会返回非零退出码；缺少工具不会跳过后声称成功。CLI 支持 `verify --report reports/new-report.json`，不会覆盖已有报告。
+默认资料目录为 `~/Library/Application Support/SRICS Next/library`，已有资料和密码会沿用。完整操作与后台管理说明见 [本机启动程序](docs/LOCAL_LAUNCHER.md)。当前只监听 `127.0.0.1`，不开放局域网 HTTP。
+
+运行 `./scripts/check.sh` 完成构建、静态检查、并发测试和恢复集成测试。打包后运行 `python3 scripts/check-launcher.py 'dist/SRICS Next.app/Contents/Resources/bin/srics'` 检查独立测试资料库的后台启停与登录。样本验证仍可从网页运行，或执行 `./bin/srics verify --report reports/new-report.json`；不会覆盖已有报告，也不读取真实资料。
 
 界面参考 Lumoswitch Global 版的黑白对比、描边卡片与胶囊控件，支持浅色 / 深色切换。桌面使用侧边栏，手机使用底部导航。设计与交互约定见 [界面记录](docs/INTERFACE.md)。
 

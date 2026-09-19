@@ -34,7 +34,7 @@ const complete = computed(() => !busy.value && ["passed", "failed"].includes(rep
 const status = computed(() => connection.value === "offline" ? "offline"
   : starting.value || syncing.value ? "running" : report.value?.status || "idle");
 const statusTitle = computed(() => ({
-  idle: "准备好，做一次恢复验证",
+  idle: "尚未运行验证",
   running: starting.value ? "正在启动验证" : syncing.value ? "正在同步验证进度" : "正在验证恢复能力",
   passed: "恢复验证通过",
   failed: "有一项验证需要处理",
@@ -122,7 +122,7 @@ onUnmounted(() => { clearUploadMemory(); window.removeEventListener("hashchange"
         <a href="#/" class="nav-item" :aria-current="page === 'library' ? 'page' : undefined">
           <Icon name="library" /><span>资料库</span>
         </a>
-        <p class="nav-label">收藏与创作</p>
+        <p class="nav-label">资料分类</p>
         <a v-for="item in modules.slice(0, 4)" :key="item.id" :href="'#/library/' + item.id"
           class="nav-item" :aria-current="activeModule?.id === item.id ? 'page' : undefined">
           <Icon :name="item.icon" /><span>{{ item.name }}</span>
@@ -154,7 +154,6 @@ onUnmounted(() => { clearUploadMemory(); window.removeEventListener("hashchange"
           <span v-if="activeModule" class="breadcrumb-divider">/</span>
           <span>{{ title }}</span>
         </div>
-        <span class="toolbar-note">你的收藏，由你掌握</span>
       </header>
 
       <main ref="main" class="main-content" tabindex="-1" :aria-label="title">
@@ -168,11 +167,11 @@ onUnmounted(() => { clearUploadMemory(); window.removeEventListener("hashchange"
 
         <template v-if="page === 'library'">
           <section class="page-heading">
-            <div><h1>我的资料库</h1><p class="subtitle">管理收藏、照片和重要文件。让保存和取回，都有把握。</p></div>
+            <div><h1>我的资料库</h1></div>
             <a href="#/backup" class="button primary"><Icon name="shield" />备份中心<Icon name="arrow" /></a>
           </section>
 
-          <section class="library-overview panel"><div><p class="eyebrow">都在这里，妥善保存</p><h2>欢迎回到你的收藏。</h2><p>从一本漫画、一张图片开始，慢慢装满属于你的空间。</p></div><div class="library-stat"><strong>{{ Object.values(stats.counts).reduce((n,v)=>n+v,0) }}</strong><span>项收藏</span></div><div class="library-stat"><strong>{{ fileSize(stats.size) }}</strong><span>原件大小</span></div></section>
+          <section class="library-overview panel"><div class="library-stat"><strong>{{ Object.values(stats.counts).reduce((n,v)=>n+v,0) }}</strong><span>项资料</span></div><div class="library-stat"><strong>{{ fileSize(stats.size) }}</strong><span>原件大小</span></div></section>
 
           <div class="section-heading library-section-heading"><h2>资料空间</h2><span class="quiet-badge">6 个独立空间</span></div>
           <div class="library-grid">
@@ -193,7 +192,7 @@ onUnmounted(() => { clearUploadMemory(); window.removeEventListener("hashchange"
 
         <template v-else-if="page === 'verify'">
           <section class="page-heading">
-            <div><p class="eyebrow">安心保存，从能恢复开始</p><h1>恢复验证</h1><p class="subtitle">检查从文件保存到备份取回的完整流程。</p></div>
+            <div><h1>恢复验证</h1><p class="subtitle">检查从文件保存到备份取回的完整流程。</p></div>
           </section>
           <section class="verification-summary panel" :class="status" aria-labelledby="verification-heading">
             <div class="summary-top">
@@ -259,8 +258,8 @@ onUnmounted(() => { clearUploadMemory(); window.removeEventListener("hashchange"
           </section>
           <section class="module-empty panel">
             <span class="empty-icon"><Icon name="clock" /></span>
-            <h2>这个空间正在准备中</h2>
-            <p>漫画、图片与个人照片已经开放。<br />{{ activeModule.name }}功能开放后，就可以在这里管理你的内容。</p>
+            <h2>功能开发中</h2>
+            <p>{{ activeModule.name }}暂未开放。</p>
             <a href="#/about" class="button primary">查看开发计划<Icon name="chevron-right" /></a>
             <a href="#/" class="text-link">返回资料库</a>
           </section>
@@ -271,7 +270,7 @@ onUnmounted(() => { clearUploadMemory(); window.removeEventListener("hashchange"
         </template>
 
         <template v-else-if="page === 'about'">
-          <section class="page-heading"><div><p class="eyebrow">一步一步，妥善保存</p><h1>关于此版本</h1><p class="subtitle">一个属于你自己的本地资料库。</p></div><span class="quiet-badge">M0</span></section>
+          <section class="page-heading"><div><h1>关于此版本</h1></div><span class="quiet-badge">DEV</span></section>
           <section class="about-intro panel">
             <span class="brand-mark"><Icon name="library" /></span>
             <div><h2>SRICS Next</h2><p>当前可以导入漫画、浏览图片、保存照片原件，以及从回收站恢复内容。登录、可重试上传和本地加密备份已接入；小说与私密空间继续按计划开发。</p></div>
@@ -285,8 +284,8 @@ onUnmounted(() => { clearUploadMemory(); window.removeEventListener("hashchange"
             </ol>
           </section>
           <div class="about-notes">
-            <div><Icon name="computer" /><h3>从本机开始</h3><p>已支持单用户登录。当前仅本机访问，局域网 HTTPS 与发布包仍待完成。</p></div>
-            <div><Icon name="shield" /><h3>让恢复可验证</h3><p>验证报告可下载留存。服务重启后，最近一次结果会清空。</p></div>
+            <div><Icon name="computer" /><h3>运行方式</h3><p>通过本机程序配置和启停服务。当前仅本机访问，局域网 HTTPS 仍待完成。</p></div>
+            <div><Icon name="shield" /><h3>恢复验证</h3><p>验证报告可下载留存。服务重启后，最近一次结果会清空。</p></div>
           </div>
           <a href="#/verify" class="text-link">打开恢复验证<Icon name="arrow" /></a>
         </template>

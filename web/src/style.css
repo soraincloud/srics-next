@@ -401,7 +401,7 @@ button:disabled { opacity: .45; }
 .auth-note { font-size: 11px; color: var(--muted); text-align: center; margin-top: 25px; }
 .auth-footer { font-size: 11px; color: var(--muted); padding-top: 30px; }
 .library-overview { display: flex; gap: 36px; align-items: center; padding: 28px 32px; }
-.library-overview > div:first-child { margin-right: auto; }
+.library-overview .library-stat { flex: 1; }
 .library-overview h2 { font-size: 22px; margin: 7px 0 9px; }
 .library-overview p:not(.eyebrow) { color: var(--secondary); font-size: 13px; line-height: 1.8; }
 .library-stat { display: grid; gap: 9px; white-space: nowrap; }
@@ -511,7 +511,7 @@ dialog::backdrop { background: rgba(0,0,0,.65); backdrop-filter: blur(6px); }
 .backup-setup p { color: var(--secondary); font-size: 12px; line-height: 1.8; }
 .backup-setup pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; line-height: 2; background: var(--surface-soft); border-radius: 12px; padding: 16px; margin: 20px 0; }
 @media (max-width: 1180px) { .collection-grid { grid-template-columns: repeat(3,minmax(0,1fr)); } .photo-wall { columns: 3; } .library-overview { gap: 22px; } }
-@media (max-width: 920px) { .collection-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } .photo-wall { columns: 2; } .library-overview { flex-wrap: wrap; } .library-overview > div:first-child { flex-basis: 100%; } .backup-card { flex-wrap: wrap; } .backup-details { grid-template-columns: 1fr; gap: 10px; } .backup-details dd { margin-bottom: 12px; } }
+@media (max-width: 920px) { .collection-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } .photo-wall { columns: 2; } .library-overview { flex-wrap: wrap; }  .backup-card { flex-wrap: wrap; } .backup-details { grid-template-columns: 1fr; gap: 10px; } .backup-details dd { margin-bottom: 12px; } }
 @media (min-width: 721px) and (max-height: 850px) { .sidebar-nav { margin-top: 18px; } .sidebar-bottom { padding-top: 10px; } .sidebar-bottom .nav-item { min-height: 34px; padding-block: 6px; } .sidebar-bottom .nav-item + .nav-item { margin-top: 1px; } .local-note { margin-top: 8px; } }
 @media (max-width: 720px) { .auth-layout { padding: 20px; } .auth-card { padding: 26px; margin-top: 45px; } .auth-card h1 { font-size: 25px; } .auth-footer { margin-top: auto; } .library-overview { padding: 24px; gap: 20px 32px; } .collection-grid { gap: 12px; } .content-card { border-radius: 16px; } .photo-wall { column-gap: 12px; } .content-card-info { padding: 12px 12px 5px; } .content-card h2 { font-size: 13px; } .search-field { width: 100%; } .collection-toolbar { gap: 12px; } .upload-actions .button { padding-inline: 16px; } .collection-empty { padding: 45px 20px; } .reader-controls { top: 82px; padding: 8px; gap: 5px; flex-wrap: wrap; } .reader-controls .segmented button { padding: 8px 12px; } .reader-heading { align-items: flex-start; gap: 20px; } .reader-heading h1 { font-size: 23px; } .reader-pagination { gap: 2px; margin-left: auto; } dialog { padding: 22px; } .dialog-header h2 { font-size: 20px; } .task-row { flex-wrap: wrap; } .task-row > div { flex-basis: 70%; } .subtle-copy { flex-basis: 100%; } .backup-card { padding: 24px; } .trash-list { padding: 0 16px; } .trash-row { gap: 12px; } .trash-row .module-icon { display: none; } .viewer-image { gap: 4px; } .viewer-image img { max-width: calc(100% - 72px); } .image-viewer { padding: 14px; } .logout-button { width: 30px; } }
 

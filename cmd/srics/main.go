@@ -37,6 +37,8 @@ func run(args []string) error {
 		args = []string{"serve"}
 	}
 	switch args[0] {
+	case "manager":
+		return manager(ctx, args[1:])
 	case "version":
 		fmt.Println("SRICS Next", version)
 		return nil
@@ -80,6 +82,7 @@ func run(args []string) error {
 		return restoreLibrary(ctx, args[1:], verification.ResolveTools().Restic)
 	case "serve":
 		flags := flag.NewFlagSet("serve", flag.ContinueOnError)
+		config := flags.String("config", "", "saved local configuration")
 		address := flags.String("addr", "127.0.0.1:19473", "loopback listen address")
 		data := flags.String("data", "", "existing initialized data directory; default: OS application data")
 		if err := flags.Parse(args[1:]); err != nil {
@@ -87,6 +90,18 @@ func run(args []string) error {
 		}
 		if flags.NArg() != 0 {
 			return errors.New("unexpected arguments")
+		}
+		var savedConfig *localConfig
+		if *config != "" {
+			c, exists, err := loadConfig(*config)
+			if err != nil {
+				return err
+			}
+			if !exists {
+				return errors.New("请先在本机程序中保存配置")
+			}
+			savedConfig = &c
+			*data, *address = c.Data, c.address()
 		}
 		host, _, err := net.SplitHostPort(*address)
 		if err != nil {
@@ -108,6 +123,9 @@ func run(args []string) error {
 		defer l.Close()
 		tools := verification.ResolveTools()
 		b, err := backupConfig(tools.Restic)
+		if savedConfig != nil {
+			b, err = configuredBackup(*savedConfig, tools.Restic)
+		}
 		if err != nil {
 			listener.Close()
 			return err
@@ -135,6 +153,6 @@ func run(args []string) error {
 		}
 		return err
 	default:
-		return errors.New("usage: srics [serve [--data directory] | init --data new-directory | restore | verify [--report new.json] | version]")
+		return errors.New("usage: srics [manager | serve [--data directory] | init --data new-directory | restore | verify [--report new.json] | version]")
 	}
 }

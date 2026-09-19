@@ -1,0 +1,259 @@
+package main
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"encoding/xml"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
+
+	"github.com/soraincloud/srics-next/internal/library"
+	"github.com/soraincloud/srics-next/internal/verification"
+	"golang.org/x/sys/unix"
+)
+
+type managerStatus struct {
+	Config      localConfig `json:"config"`
+	Saved       bool        `json:"saved"`
+	Running     bool        `json:"running"`
+	PasswordSet bool        `json:"passwordSet"`
+	URL         string      `json:"url"`
+	Log         string      `json:"log"`
+}
+
+func serviceLabel(path string) string {
+	return fmt.Sprintf("com.soraincloud.srics.%x", sha256.Sum256([]byte(path)))
+}
+func serviceTarget(path string) string {
+	return fmt.Sprintf("gui/%d/%s", os.Getuid(), serviceLabel(path))
+}
+func serviceLoaded(ctx context.Context, path string) bool {
+	return exec.CommandContext(ctx, "/bin/launchctl", "print", serviceTarget(path)).Run() == nil
+}
+func readManagerStatus(ctx context.Context, path string) (managerStatus, error) {
+	c, saved, err := loadConfig(path)
+	s := managerStatus{Config: c, Saved: saved, URL: "http://" + c.address(), Log: filepath.Join(filepath.Dir(path), "service.log")}
+	if err != nil {
+		return s, err
+	}
+	if runtime.GOOS == "darwin" {
+		out, _ := exec.CommandContext(ctx, "/bin/launchctl", "print", serviceTarget(path)).Output()
+		s.Running = strings.Contains(string(out), "state = running")
+	}
+	if s.Running {
+		client := &http.Client{Timeout: time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		res, err := client.Get(s.URL + "/api/auth")
+		if err == nil {
+			defer res.Body.Close()
+			var auth struct {
+				Configured bool `json:"configured"`
+			}
+			if res.StatusCode == 200 && json.NewDecoder(io.LimitReader(res.Body, 4096)).Decode(&auth) == nil {
+				s.PasswordSet = auth.Configured
+			}
+		}
+	} else if l, err := library.Open(c.Data); err == nil {
+		hash, err := l.Setting("password")
+		l.Close()
+		s.PasswordSet = err == nil && len(hash) > 0
+	}
+	return s, nil
+}
+func xmlText(s string) string {
+	var b strings.Builder
+	xml.EscapeText(&b, []byte(s))
+	return b.String()
+}
+func launchPlist(path, executable string, s managerStatus) string {
+	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>Label</key><string>%s</string>
+<key>ProgramArguments</key><array><string>%s</string><string>serve</string><string>--config</string><string>%s</string></array>
+<key>RunAtLoad</key><true/>
+<key>ExitTimeOut</key><integer>120</integer>
+<key>Umask</key><integer>63</integer>
+<key>StandardOutPath</key><string>%s</string>
+<key>StandardErrorPath</key><string>%s</string>
+</dict></plist>`, xmlText(serviceLabel(path)), xmlText(executable), xmlText(path), xmlText(s.Log), xmlText(s.Log))
+}
+func startManaged(ctx context.Context, path string) error {
+	if runtime.GOOS != "darwin" {
+		return errors.New("后台启动当前仅支持 macOS")
+	}
+	s, err := readManagerStatus(ctx, path)
+	if err != nil {
+		return err
+	}
+	if s.Running && s.PasswordSet {
+		return nil
+	}
+	if !s.Saved || !s.PasswordSet {
+		return errors.New("请先保存本机配置和登录密码")
+	}
+	if _, err := configuredBackup(s.Config, ""); err != nil {
+		return err
+	}
+	dep := verification.ResolveTools()
+	if dep.CWebP == "" || dep.Restic == "" {
+		return errors.New("缺少 cwebp 或 restic，请重新构建完整程序包")
+	}
+	listener, err := net.Listen("tcp", s.Config.address())
+	if err != nil {
+		return errors.New("端口已占用，请停止旧服务或更换端口")
+	}
+	listener.Close()
+	if serviceLoaded(ctx, path) {
+		if err := stopManaged(ctx, path); err != nil {
+			return err
+		}
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	plist := filepath.Join(filepath.Dir(path), "service.plist")
+	if err = os.WriteFile(plist, []byte(launchPlist(path, exe, s)), 0600); err != nil {
+		return err
+	}
+	log, err := os.OpenFile(s.Log, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	log.Close()
+	if err = exec.CommandContext(ctx, "/bin/launchctl", "bootstrap", fmt.Sprintf("gui/%d", os.Getuid()), plist).Run(); err != nil {
+		return fmt.Errorf("无法注册后台服务：%w", err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		current, err := readManagerStatus(ctx, path)
+		if err == nil && current.Running && current.PasswordSet {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+	_ = stopManaged(ctx, path)
+	return errors.New("服务启动失败，请查看运行日志")
+}
+func stopManaged(ctx context.Context, path string) error {
+	if runtime.GOOS != "darwin" {
+		return errors.New("后台管理当前仅支持 macOS")
+	}
+	if !serviceLoaded(ctx, path) {
+		return nil
+	}
+	if err := exec.CommandContext(ctx, "/bin/launchctl", "bootout", serviceTarget(path)).Run(); err != nil {
+		return fmt.Errorf("停止失败：%w", err)
+	}
+	c, _, err := loadConfig(path)
+	if err != nil {
+		return err
+	}
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		l, err := library.Open(c.Data)
+		if err == nil {
+			l.Close()
+			return nil
+		}
+		if _, err := os.Stat(c.Data); os.IsNotExist(err) {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(150 * time.Millisecond):
+		}
+	}
+	return errors.New("服务仍在完成任务，请稍后刷新状态")
+}
+func manager(ctx context.Context, args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: srics manager [info|configure|start|stop] [--config path]")
+	}
+	path, err := configPath()
+	if err != nil {
+		return err
+	}
+	flags := flag.NewFlagSet("manager", flag.ContinueOnError)
+	flags.StringVar(&path, "config", path, "local configuration file")
+	if err := flags.Parse(args[1:]); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 || !filepath.IsAbs(path) {
+		return errors.New("配置文件需要绝对路径")
+	}
+	path = filepath.Clean(path)
+	if args[0] != "info" {
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			return err
+		}
+		f, err := os.OpenFile(filepath.Join(filepath.Dir(path), ".manager.lock"), os.O_CREATE|os.O_RDWR, 0600)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+			return errors.New("另一项本机配置操作正在进行")
+		}
+		defer unix.Flock(int(f.Fd()), unix.LOCK_UN)
+	}
+	switch args[0] {
+	case "info":
+	case "configure":
+		if runtime.GOOS == "darwin" && serviceLoaded(ctx, path) {
+			current, err := readManagerStatus(ctx, path)
+			if err != nil {
+				return err
+			}
+			if current.Running {
+				return errors.New("请先停止服务再修改配置")
+			}
+			if err := stopManaged(ctx, path); err != nil {
+				return err
+			}
+		}
+		var req configureRequest
+		decoder := json.NewDecoder(io.LimitReader(os.Stdin, 65537))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&req); err != nil {
+			return errors.New("本机配置格式不正确")
+		}
+		if decoder.Decode(&struct{}{}) != io.EOF {
+			return errors.New("本机配置包含多余内容")
+		}
+		if err := applyConfig(path, req); err != nil {
+			return err
+		}
+	case "start":
+		if err := startManaged(ctx, path); err != nil {
+			return err
+		}
+	case "stop":
+		if err := stopManaged(ctx, path); err != nil {
+			return err
+		}
+	default:
+		return errors.New("未知本机管理操作")
+	}
+	status, err := readManagerStatus(ctx, path)
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(os.Stdout).Encode(status)
+}
