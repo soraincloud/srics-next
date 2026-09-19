@@ -15,12 +15,14 @@ import (
 	"time"
 
 	"github.com/soraincloud/srics-next/internal/atomicfile"
+	"github.com/soraincloud/srics-next/internal/library"
+	"github.com/soraincloud/srics-next/internal/media"
 	"github.com/soraincloud/srics-next/internal/server"
 	"github.com/soraincloud/srics-next/internal/verification"
 	"github.com/soraincloud/srics-next/internal/webui"
 )
 
-var version = "0.1.0-dev"
+var version = "0.2.0-dev"
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -64,9 +66,22 @@ func run(args []string) error {
 			return errors.New("verification failed; see report")
 		}
 		return nil
+	case "init":
+		flags := flag.NewFlagSet("init", flag.ContinueOnError)
+		data := flags.String("data", "", "new data directory")
+		if err := flags.Parse(args[1:]); err != nil {
+			return err
+		}
+		if *data == "" || flags.NArg() != 0 {
+			return errors.New("usage: srics init --data new-directory")
+		}
+		return library.Create(*data)
+	case "restore":
+		return restoreLibrary(ctx, args[1:], verification.ResolveTools().Restic)
 	case "serve":
 		flags := flag.NewFlagSet("serve", flag.ContinueOnError)
 		address := flags.String("addr", "127.0.0.1:19473", "loopback listen address")
+		data := flags.String("data", "", "existing initialized data directory; default: OS application data")
 		if err := flags.Parse(args[1:]); err != nil {
 			return err
 		}
@@ -79,16 +94,29 @@ func run(args []string) error {
 		}
 		ip := net.ParseIP(host)
 		if host != "localhost" && (ip == nil || !ip.IsLoopback()) {
-			return errors.New("M0 only permits loopback access; LAN login and HTTPS are not implemented yet")
+			return errors.New("当前开发版仅允许本机访问；局域网 HTTPS 在发布阶段开放")
 		}
 		listener, err := net.Listen("tcp", *address)
 		if err != nil {
 			return err
 		}
+		l, err := openLibrary(*data)
+		if err != nil {
+			listener.Close()
+			return err
+		}
+		defer l.Close()
+		tools := verification.ResolveTools()
+		b, err := backupConfig(tools.Restic)
+		if err != nil {
+			listener.Close()
+			return err
+		}
 		app := server.New(ctx, listener.Addr().String(), webui.Files(), func(ctx context.Context, publish func(verification.Report)) verification.Report {
 			return verification.Run(ctx, verification.ResolveTools(), publish)
 		})
-		srv := &http.Server{Handler: app, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
+		app.EnableLibrary(l, media.Converter{CWebP: tools.CWebP}, b)
+		srv := &http.Server{Handler: app, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
@@ -97,7 +125,7 @@ func run(args []string) error {
 			defer cancel()
 			srv.Shutdown(stop)
 		}()
-		fmt.Printf("SRICS Next %s · M0 本机验证版\nhttp://%s\n仅处理合成样本；按 Ctrl+C 停止。\n", version, listener.Addr())
+		fmt.Printf("SRICS Next %s · 本机开发版\nhttp://%s\n按 Ctrl+C 停止。\n", version, listener.Addr())
 		err = srv.Serve(listener)
 		cancel()
 		<-done
@@ -107,6 +135,6 @@ func run(args []string) error {
 		}
 		return err
 	default:
-		return errors.New("usage: srics [serve | verify [--report new.json] | version]")
+		return errors.New("usage: srics [serve [--data directory] | init --data new-directory | restore | verify [--report new.json] | version]")
 	}
 }

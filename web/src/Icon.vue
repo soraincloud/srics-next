@@ -1,6 +1,12 @@
 <script setup lang="ts">
 defineProps<{ name: string }>();
 const paths: Record<string, string[]> = {
+  logout: ["M9 3H3v18h6", "M9 12h12m-4-4 4 4-4 4"],
+  upload: ["M12 16V3m-4 4 4-4 4 4", "M4 15v6h16v-6"],
+  trash: ["M3 6h18M9 6V3h6v3", "M5 6l1 15h12l1-15M10 10v7M14 10v7"],
+  search: ["M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0", "m15 15 6 6"],
+  shuffle: ["M3 5h3c5 0 7 14 12 14h3m-4-4 4 4-4 4", "M3 19h3c2 0 4-3 6-7s4-7 6-7h3m-4-4 4 4-4 4"],
+  edit: ["m16 3 5 5-12 12-6 1 1-6Z", "m13 6 5 5"],
   sun: ["M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0", "M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"],
   moon: ["M20.8 13A9 9 0 0 1 11 3.2 9 9 0 1 0 20.8 13Z"],
   library: ["M3 3h7v7H3Z", "M14 3h7v7h-7Z", "M3 14h7v7H3Z", "M14 14h7v7h-7Z"],

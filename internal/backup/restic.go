@@ -44,7 +44,13 @@ func (c Client) Init(ctx context.Context) error {
 	return err
 }
 func (c Client) Backup(ctx context.Context, stage string) (string, error) {
-	data, err := c.run(ctx, stage, "backup", "--json", "--host", "srics-verification", "--tag", "m0", ".")
+	return c.backup(ctx, stage, "srics-verification", "m0")
+}
+func (c Client) BackupLibrary(ctx context.Context, stage string) (string, error) {
+	return c.backup(ctx, stage, "srics-library", "library-v1")
+}
+func (c Client) backup(ctx context.Context, stage, host, tag string) (string, error) {
+	data, err := c.run(ctx, stage, "backup", "--json", "--host", host, "--tag", tag, ".")
 	if err != nil {
 		return "", err
 	}

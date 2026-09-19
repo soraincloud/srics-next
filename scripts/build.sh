@@ -8,4 +8,4 @@ npm --prefix web run build
 touch internal/webui/dist/.gitkeep
 mkdir -p bin
 CGO_ENABLED=1 go build -trimpath -o bin/srics ./cmd/srics
-echo '已构建 bin/srics；运行 ./start.command 打开本机验证版。'
+echo '已构建 bin/srics；运行 ./start.command 打开本机资料库。'

@@ -1,5 +1,7 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 
+import { authenticated, csrf } from "./api";
+
 type CheckStatus = "pending" | "running" | "passed" | "failed" | "blocked";
 export type Report = {
   status: "idle" | "running" | "passed" | "failed";
@@ -40,6 +42,7 @@ export function useVerification() {
     pending = (async () => {
       try {
         const response = await fetch("/api/status", { cache: "no-store", signal: pollController!.signal });
+        if (response.status === 401) authenticated.value = false;
         if (!response.ok) throw new Error("服务状态不可用");
         const data = await response.json();
         if (!stopped) {
@@ -71,7 +74,7 @@ export function useVerification() {
     const timeout = setTimeout(() => startController?.abort(), 8000);
     try {
       const response = await fetch("/api/verification", {
-        method: "POST", headers: { "X-SRICS-Request": "verification" }, signal: startController.signal,
+        method: "POST", headers: { "X-SRICS-Request": "verification", "X-SRICS-CSRF": csrf.value }, signal: startController.signal,
       });
       // Another tab may have started first. Join that run instead of reporting an error.
       if (!response.ok && response.status !== 409) throw new Error("启动失败，请稍后重试。");

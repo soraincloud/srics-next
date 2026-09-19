@@ -1,4 +1,4 @@
-// Package server exposes only a local M0 verification workbench, not a file API.
+// Package server serves the local library and the separate synthetic verification workbench.
 package server
 
 import (
@@ -25,6 +25,7 @@ type Server struct {
 	allowed map[string]bool
 	files   fs.FS
 	wg      sync.WaitGroup
+	library *LibraryAPI
 }
 
 func New(ctx context.Context, address string, files fs.FS, run Runner) *Server {
@@ -35,7 +36,12 @@ func New(ctx context.Context, address string, files fs.FS, run Runner) *Server {
 	}
 	return s
 }
-func (s *Server) Wait() { s.wg.Wait() }
+func (s *Server) Wait() {
+	s.wg.Wait()
+	if s.library != nil {
+		s.library.wg.Wait()
+	}
+}
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -55,6 +61,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
 		http.Error(w, "cross-site request rejected", http.StatusForbidden)
 		return
+	}
+	if s.library != nil && strings.HasPrefix(r.URL.Path, "/api/") {
+		if !s.library.auth(w, r) {
+			return
+		}
+		if r.URL.Path != "/api/status" && r.URL.Path != "/api/verification" {
+			s.library.handle(w, r)
+			return
+		}
 	}
 	switch r.URL.Path {
 	case "/api/status":

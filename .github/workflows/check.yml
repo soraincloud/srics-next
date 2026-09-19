@@ -1,4 +1,4 @@
-name: Verify M0 foundation
+name: Verify library and recovery
 on:
   push:
   pull_request:
