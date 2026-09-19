@@ -12,6 +12,8 @@ struct ServiceStatus: Codable, Sendable {
     var saved: Bool
     var running: Bool
     var passwordSet: Bool
+    var vaultSet: Bool
+    var vaultIdleMinutes: Int
     var url: String
     var log: String
 }
@@ -19,6 +21,9 @@ struct ConfigureRequest: Encodable, Sendable {
     var config: LocalConfig
     var password: String
     var currentPassword: String
+    var vaultPassword: String
+    var currentVaultPassword: String
+    var vaultIdleMinutes: Int
 }
 struct CommandError: LocalizedError, Sendable {
     let message: String
@@ -54,13 +59,17 @@ func runManager(_ action: String, payload: Data? = nil) throws -> ServiceStatus 
     @Published var currentPassword = ""
     @Published var password = ""
     @Published var repeatedPassword = ""
+    @Published var vaultPassword = ""
+    @Published var repeatedVaultPassword = ""
+    @Published var currentVaultPassword = ""
+    @Published var vaultIdleMinutes = 10
     @Published var busy = false
     @Published var message = ""
     @Published var failed = false
     var running: Bool { status?.running == true }
     var saved: Bool { status?.saved == true }
     var passwordSet: Bool { status?.passwordSet == true }
-    var changed: Bool { config != status?.config || port != String(status?.config.port ?? 19473) || !password.isEmpty }
+    var changed: Bool { config != status?.config || port != String(status?.config.port ?? 19473) || !password.isEmpty || !vaultPassword.isEmpty || vaultIdleMinutes != (status?.vaultIdleMinutes ?? 10) }
 
     func refresh() {
         guard !busy else { return }
@@ -68,7 +77,7 @@ func runManager(_ action: String, payload: Data? = nil) throws -> ServiceStatus 
         Task {
             do {
                 let result = try await Task.detached { try runManager("info") }.value
-                if status == nil { config = result.config; port = String(result.config.port) }
+                if status == nil { config = result.config; port = String(result.config.port); vaultIdleMinutes = result.vaultIdleMinutes }
                 status = result
             } catch { message = error.localizedDescription; failed = true }
             busy = false
@@ -78,10 +87,11 @@ func runManager(_ action: String, payload: Data? = nil) throws -> ServiceStatus 
         guard !busy else { return }
         var payload: Data?
         if action == "configure" {
+            guard vaultPassword == repeatedVaultPassword else { message = "两次保险库口令不一致"; failed = true; return }
             guard password == repeatedPassword else { message = "两次密码不一致"; failed = true; return }
             guard let number = Int(port), (1024...65535).contains(number) else { message = "端口需在 1024–65535 之间"; failed = true; return }
             config.port = number
-            do { payload = try JSONEncoder().encode(ConfigureRequest(config: config, password: password, currentPassword: currentPassword)) }
+            do { payload = try JSONEncoder().encode(ConfigureRequest(config: config, password: password, currentPassword: currentPassword, vaultPassword: vaultPassword, currentVaultPassword: currentVaultPassword, vaultIdleMinutes: vaultIdleMinutes)) }
             catch { message = "配置无法读取"; failed = true; return }
         }
         busy = true; failed = false; message = ""
@@ -90,7 +100,7 @@ func runManager(_ action: String, payload: Data? = nil) throws -> ServiceStatus 
             do {
                 var result = try await Task.detached { try runManager(action, payload: request) }.value
                 status = result; config = result.config; port = String(result.config.port)
-                if action == "configure" { password = ""; repeatedPassword = ""; currentPassword = "" }
+                if action == "configure" { password = ""; repeatedPassword = ""; currentPassword = ""; vaultPassword = ""; repeatedVaultPassword = ""; currentVaultPassword = "" }
                 if startAfter { result = try await Task.detached { try runManager("start") }.value; status = result }
                 message = action == "stop" ? "服务已停止" : result.running ? "服务正在后台运行" : "配置已保存"
                 if result.running && (action == "start" || startAfter), let url = URL(string: result.url) { NSWorkspace.shared.open(url) }
@@ -145,6 +155,13 @@ struct LauncherView: View {
                     SecureField(model.passwordSet ? "新密码，留空则保留" : "至少 12 个字符", text: $model.password)
                     SecureField("再次输入密码", text: $model.repeatedPassword)
                 }
+                Section(model.status?.vaultSet == true ? "保险库（已设置）" : "保险库口令（可选）") {
+                    if model.status?.vaultSet == true { SecureField("当前保险库口令", text: $model.currentVaultPassword) }
+                    SecureField(model.status?.vaultSet == true ? "新口令，留空则保留" : "独立口令，至少 12 字节", text: $model.vaultPassword)
+                    SecureField("再次输入保险库口令", text: $model.repeatedVaultPassword)
+                    Stepper("闲置 \(model.vaultIdleMinutes) 分钟后锁定", value: $model.vaultIdleMinutes, in: 1...60)
+                    Text(model.status?.vaultSet == true ? "历史备份仍需对应的旧口令。修改口令不会撤销旧备份。" : "用于私密照片与个人文件，请独立保存。遗失后无法通过登录密码找回。").font(.caption).foregroundStyle(.secondary)
+                }
                 Section("加密备份（可选）") {
                     LabeledContent("备份目录") {
                         HStack { TextField("未配置", text: $model.config.backupRepository).textFieldStyle(.roundedBorder).labelsHidden()
@@ -181,7 +198,7 @@ struct LauncherView: View {
                 }.disabled(model.busy || model.status == nil)
                 Text(model.running ? "关闭本窗口后，服务继续运行。修改配置前请先停止服务。" : "仅本机访问。启动后在浏览器中管理资料。").font(.caption).foregroundStyle(.secondary)
             }.padding(20)
-        }.frame(width: 650, height: 660).task { model.refresh() }
+        }.frame(width: 650, height: 800).task { model.refresh() }
     }
 }
 @main struct SRICSLauncherApp: App {

@@ -2,6 +2,8 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import Icon from "./Icon.vue";
 import LibraryView from "./LibraryView.vue";
+import PrivateView from "./PrivateView.vue";
+import { installVaultLifecycle, vaultOpen, lockVault } from "./vault";
 import NovelView from "./NovelView.vue";
 import { canNavigate } from "./navigation";
 import LibraryTools from "./LibraryTools.vue";
@@ -18,7 +20,7 @@ const main = ref<HTMLElement>();
 const expanded = ref(new Set<string>());
 const activeModule = computed(() => modules.find((item) => route.value === "#/library/" + item.id || route.value.startsWith("#/library/" + item.id + "/")));
 const itemId = computed(() => route.value.split("/")[3]);
-const available = ["comics", "images", "photos", "novels"];
+const available = ["comics", "images", "photos", "novels", "private", "files"];
 const stats = ref<{counts:Record<string,number>;size:number}>({counts:{},size:0});
 async function loadStats(){ try { stats.value = await api("/api/library/stats"); } catch {} }
 async function logout(){ if (!(await canNavigate())) return; try { await api("/api/auth/logout",{method:"POST"}); clearUploadMemory(); authenticated.value=false; } catch { window.alert("退出失败，请检查连接后重试。"); } }
@@ -75,6 +77,7 @@ const checkHints: Record<string, string> = {
   restore: "移除本轮源数据，再从备份中取回",
 };
 
+let stopVault: (()=>void)|undefined;
 let changingRoute = false;
 async function routeChanged() {
   if (changingRoute) return;
@@ -110,8 +113,8 @@ function downloadReport() {
 watch(title, (value) => { document.title = value + " · SRICS Next"; }, { immediate: true });
 watch(() => report.value?.startedAt, () => { expanded.value = new Set(); });
 watch(() => failedCheck.value?.id, (id) => { if (id) expanded.value = new Set([...expanded.value, id]); });
-onMounted(() => { window.addEventListener("hashchange", routeChanged); window.addEventListener("library-changed", loadStats); void loadStats(); });
-onUnmounted(() => { clearUploadMemory(); window.removeEventListener("hashchange", routeChanged); window.removeEventListener("library-changed", loadStats); });
+onMounted(() => { stopVault=installVaultLifecycle(); window.addEventListener("hashchange", routeChanged); window.addEventListener("library-changed", loadStats); void loadStats(); });
+onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListener("hashchange", routeChanged); window.removeEventListener("library-changed", loadStats); });
 </script>
 
 <template>
@@ -125,6 +128,7 @@ onUnmounted(() => { clearUploadMemory(); window.removeEventListener("hashchange"
       <span class="header-divider"></span><span class="header-label">个人资料库</span>
       <div class="header-actions">
         <span class="connection" :class="connection"><span class="connection-dot"></span>{{ connection === "online" ? "本机已连接" : connection === "offline" ? "连接已中断" : "正在连接" }}</span>
+        <button v-if="vaultOpen" class="icon-button" aria-label="锁定保险库" title="锁定保险库" @click="lockVault().catch(()=>{})"><Icon name="lock" /></button>
         <button class="icon-button logout-button" aria-label="退出登录" title="退出登录" @click="logout"><Icon name="logout" /></button>
         <button class="theme-toggle" :aria-label="theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'" :title="theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'" @click="toggleTheme"><Icon :name="theme === 'dark' ? 'sun' : 'moon'" /></button>
       </div>
@@ -184,7 +188,7 @@ onUnmounted(() => { clearUploadMemory(); window.removeEventListener("hashchange"
             <a href="#/backup" class="button primary"><Icon name="shield" />备份中心<Icon name="arrow" /></a>
           </section>
 
-          <section class="library-overview panel"><div class="library-stat"><strong>{{ Object.values(stats.counts).reduce((n,v)=>n+v,0) }}</strong><span>项资料</span></div><div class="library-stat"><strong>{{ fileSize(stats.size) }}</strong><span>原件大小</span></div></section>
+          <section class="library-overview panel"><div class="library-stat"><strong>{{ Object.values(stats.counts).reduce((n,v)=>n+v,0) }}</strong><span>项普通资料</span></div><div class="library-stat"><strong>{{ fileSize(stats.size) }}</strong><span>原件大小</span></div></section>
 
           <div class="section-heading library-section-heading"><h2>资料空间</h2><span class="quiet-badge">6 个独立空间</span></div>
           <div class="library-grid">
@@ -192,14 +196,14 @@ onUnmounted(() => { clearUploadMemory(); window.removeEventListener("hashchange"
               class="library-card" :aria-label="item.name + (available.includes(item.id) ? '，打开资料空间' : '，查看功能计划')">
               <div class="card-top">
                 <span class="module-icon"><Icon :name="item.icon" /></span>
-                <span class="coming-soon" :class="{available:available.includes(item.id)}">{{ available.includes(item.id) ? (stats.counts[item.id] || 0) + ' 项' : '准备中' }}</span>
+                <span class="coming-soon" :class="{available:available.includes(item.id)}">{{ ['private','files'].includes(item.id) ? '保险库' : (stats.counts[item.id] || 0) + ' 项' }}</span>
               </div>
               <h2>{{ item.name }}</h2>
               <p class="card-description">{{ item.sub }}</p>
               <div class="card-meta"><span>{{ item.kind }}</span><span class="card-arrow"><Icon name="arrow" /></span></div>
             </a>
           </div>
-          <p class="library-note"><Icon name="info" />漫画、小说、图片和个人照片已开放；私密空间正在开发。<a href="#/about">查看开发计划<Icon name="chevron-right" /></a></p>
+          <p class="library-note"><Icon name="info" />私密照片与个人文件需要独立解锁。<a href="#/about">查看开发计划<Icon name="chevron-right" /></a></p>
           <p class="page-footnote"><Icon name="computer" />仅在本机运行 · 文件保存在你的设备上</p>
         </template>
 
@@ -261,6 +265,7 @@ onUnmounted(() => { clearUploadMemory(); window.removeEventListener("hashchange"
           </details>
         </template>
 
+        <PrivateView v-else-if="activeModule && ['private','files'].includes(activeModule.id)" :key="activeModule.id" :module="activeModule.id" />
         <NovelView v-else-if="activeModule?.id === 'novels'" :key="itemId || 'novel-list'" :item-id="itemId" />
         <LibraryView v-else-if="activeModule && available.includes(activeModule.id)" :module="activeModule.id" :item-id="itemId" :name="activeModule.name" :sub="activeModule.sub" />
         <LibraryTools v-else-if="page === 'trash' || page === 'backup'" :page="page" />
@@ -287,12 +292,12 @@ onUnmounted(() => { clearUploadMemory(); window.removeEventListener("hashchange"
           <section class="page-heading"><div><h1>关于此版本</h1></div><span class="quiet-badge">DEV</span></section>
           <section class="about-intro panel">
             <span class="brand-mark"><Icon name="library" /></span>
-            <div><h2>SRICS Next</h2><p>当前可以导入漫画、浏览图片、保存照片原件，以及从回收站恢复内容。登录、可重试上传和本地加密备份已接入；小说与私密空间继续按计划开发。</p></div>
+            <div><h2>SRICS Next</h2><p>当前可以导入漫画、浏览图片、保存照片原件，以及从回收站恢复内容。登录、可重试上传和本地加密备份已接入；小说编辑与阅读、私密照片和个人文件也已接入。</p></div>
           </section>
           <section aria-labelledby="roadmap-heading">
-            <div class="section-heading"><h2 id="roadmap-heading">开发计划</h2><span>当前阶段 M2</span></div>
+            <div class="section-heading"><h2 id="roadmap-heading">开发计划</h2><span>当前阶段 M4</span></div>
             <ol class="roadmap panel">
-              <li v-for="stage in stages" :key="stage.id" :class="{ current: stage.id === 'M2' }">
+              <li v-for="stage in stages" :key="stage.id" :class="{ current: stage.id === 'M4' }">
                 <span class="stage-number">{{ stage.id }}</span><div><h3>{{ stage.name }}</h3><p>{{ stage.detail }}</p></div><span class="stage-state">{{ stage.state }}</span>
               </li>
             </ol>

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/soraincloud/srics-next/internal/library"
+	"github.com/soraincloud/srics-next/internal/vault"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -156,5 +157,61 @@ func TestLaunchPlistEscapesPathsAndContainsNoCredentials(t *testing.T) {
 	}
 	if strings.Contains(plist, "Password") || strings.Contains(plist, "KeepAlive") {
 		t.Fatal("unexpected launch persistence or credentials")
+	}
+}
+
+func TestLocalVaultPassphraseAndRotation(t *testing.T) {
+	base := t.TempDir()
+	path := filepath.Join(base, "config.json")
+	c := localConfig{Data: filepath.Join(base, "library"), Port: 19473}
+	req := configureRequest{Config: c, Password: syntheticPassword, VaultPassword: "synthetic-vault-original", VaultIdleMinutes: 7}
+	if err := applyConfig(path, req); err != nil {
+		t.Fatal(err)
+	}
+	l, err := library.Open(c.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrapped, _ := l.Setting("vault-key")
+	idle, _ := l.Setting("vault-idle")
+	l.Close()
+	key, err := vault.Unlock(wrapped, req.VaultPassword)
+	if err != nil || string(idle) != "7" {
+		t.Fatal("vault setup failed", err)
+	}
+	req.Password = ""
+	req.VaultPassword = "synthetic-vault-replacement"
+	req.CurrentVaultPassword = "incorrect"
+	req.Config.Port++
+	if err = applyConfig(path, req); err == nil {
+		t.Fatal("vault changed without old passphrase")
+	}
+	saved, _, _ := loadConfig(path)
+	if saved.Port != c.Port {
+		t.Fatal("failed rotation changed config")
+	}
+	req.CurrentVaultPassword = "synthetic-vault-original"
+	if err = applyConfig(path, req); err != nil {
+		t.Fatal(err)
+	}
+	l, err = library.Open(c.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	changed, _ := l.Setting("vault-key")
+	if _, err = vault.Unlock(changed, req.CurrentVaultPassword); err == nil {
+		t.Fatal("old passphrase still unlocks new wrapper")
+	}
+	newer, err := vault.Unlock(changed, req.VaultPassword)
+	if err != nil || newer.String() != key.String() {
+		t.Fatal("rotation changed data identity", err)
+	}
+	if _, err = vault.Unlock(wrapped, req.CurrentVaultPassword); err != nil {
+		t.Fatal("historical wrapper lost", err)
+	}
+	config, _ := os.ReadFile(path)
+	if strings.Contains(string(config), "synthetic-vault") {
+		t.Fatal("plaintext passphrase in config")
 	}
 }

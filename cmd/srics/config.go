@@ -24,9 +24,12 @@ type localConfig struct {
 	BackupPasswordFile string `json:"backupPasswordFile"`
 }
 type configureRequest struct {
-	Config          localConfig `json:"config"`
-	Password        string      `json:"password"`
-	CurrentPassword string      `json:"currentPassword"`
+	Config               localConfig `json:"config"`
+	Password             string      `json:"password"`
+	CurrentPassword      string      `json:"currentPassword"`
+	VaultPassword        string      `json:"vaultPassword"`
+	CurrentVaultPassword string      `json:"currentVaultPassword"`
+	VaultIdleMinutes     int         `json:"vaultIdleMinutes"`
 }
 
 func configPath() (string, error) {
@@ -220,10 +223,30 @@ func applyConfig(path string, req configureRequest) error {
 			return err
 		}
 	}
+	var wrapped []byte
+	if req.VaultPassword != "" {
+		wrapped, err = l.PrepareVault(req.VaultPassword, req.CurrentVaultPassword)
+		if err != nil {
+			return err
+		}
+	}
+	if req.VaultIdleMinutes < 0 || req.VaultIdleMinutes > 60 {
+		return errors.New("自动锁定时间需为 1–60 分钟")
+	}
 	// Publish paths before updating credentials; a failed configuration write
 	// must never change the existing login password.
 	if err := writeConfig(path, c); err != nil {
 		return err
+	}
+	if len(wrapped) > 0 {
+		if err = l.SetSetting("vault-key", wrapped); err != nil {
+			return err
+		}
+	}
+	if req.VaultIdleMinutes > 0 {
+		if err = l.SetSetting("vault-idle", []byte(strconv.Itoa(req.VaultIdleMinutes))); err != nil {
+			return err
+		}
 	}
 	if len(newHash) > 0 {
 		if len(oldHash) == 0 {

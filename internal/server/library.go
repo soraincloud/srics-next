@@ -24,14 +24,17 @@ import (
 	"github.com/soraincloud/srics-next/internal/backup"
 	"github.com/soraincloud/srics-next/internal/library"
 	"github.com/soraincloud/srics-next/internal/media"
+	"github.com/soraincloud/srics-next/internal/vault"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type session struct {
 	expires time.Time
 	csrf    string
+	vault   *vault.Access
 }
 type LibraryAPI struct {
+	private      privateSecurity
 	store        *library.Library
 	converter    media.Converter
 	ctx          context.Context
@@ -47,7 +50,7 @@ type LibraryAPI struct {
 }
 
 func (s *Server) EnableLibrary(l *library.Library, c media.Converter, b backup.Client) {
-	s.library = &LibraryAPI{store: l, converter: c, ctx: s.ctx, sessions: map[string]session{}, backup: b}
+	s.library = &LibraryAPI{store: l, converter: c, ctx: s.ctx, sessions: map[string]session{}, backup: b, private: privateSecurity{uploads: make(chan struct{}, 1)}}
 }
 func randomToken() string {
 	b := make([]byte, 32)
@@ -65,6 +68,7 @@ func (a *LibraryAPI) current(r *http.Request) (session, bool) {
 	defer a.mu.Unlock()
 	s, ok := a.sessions[c.Value]
 	if !ok || time.Now().After(s.expires) {
+		s.vault.Lock()
 		delete(a.sessions, c.Value)
 		return session{}, false
 	}
@@ -72,15 +76,17 @@ func (a *LibraryAPI) current(r *http.Request) (session, bool) {
 }
 func (a *LibraryAPI) newSession(w http.ResponseWriter, r *http.Request) {
 	token := randomToken()
-	s := session{time.Now().Add(24 * time.Hour), randomToken()}
+	s := session{expires: time.Now().Add(24 * time.Hour), csrf: randomToken()}
 	a.mu.Lock()
 	for k, v := range a.sessions {
 		if time.Now().After(v.expires) {
+			v.vault.Lock()
 			delete(a.sessions, k)
 		}
 	}
 	if len(a.sessions) >= 32 {
-		for k := range a.sessions {
+		for k, old := range a.sessions {
+			old.vault.Lock()
 			delete(a.sessions, k)
 			break
 		}
@@ -115,7 +121,9 @@ func (a *LibraryAPI) auth(w http.ResponseWriter, r *http.Request) bool {
 			return false
 		}
 		s, ok := a.current(r)
-		writeJSON(w, 200, map[string]any{"configured": len(hash) > 0, "authenticated": ok, "csrf": s.csrf})
+		wrapped, _ := a.store.Setting("vault-key")
+		idle, _ := a.vaultIdle()
+		writeJSON(w, 200, map[string]any{"configured": len(hash) > 0, "authenticated": ok, "csrf": s.csrf, "vaultConfigured": len(wrapped) > 0, "vaultIdleMinutes": idle})
 		return false
 	}
 	if r.URL.Path == "/api/auth/setup" {
@@ -178,6 +186,7 @@ func (a *LibraryAPI) auth(w http.ResponseWriter, r *http.Request) bool {
 	if r.URL.Path == "/api/auth/logout" && r.Method == "POST" {
 		c, _ := r.Cookie("srics_session")
 		a.mu.Lock()
+		s.vault.Lock()
 		delete(a.sessions, c.Value)
 		a.mu.Unlock()
 		http.SetCookie(w, &http.Cookie{Name: "srics_session", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode})
@@ -195,6 +204,9 @@ func (a *LibraryAPI) handle(w http.ResponseWriter, r *http.Request) {
 	var err error
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	switch {
+	case len(parts) >= 2 && parts[1] == "vault":
+		a.privateAPI(w, r, parts)
+		return
 	case len(parts) >= 2 && parts[1] == "novels":
 		a.novels(w, r, parts)
 		return

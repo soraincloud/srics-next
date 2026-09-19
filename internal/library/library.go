@@ -162,7 +162,7 @@ func Open(root string) (*Library, error) {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version > 2 {
+	if version > 3 {
 		return fail(errors.New("数据版本较新，请升级程序后打开"))
 	}
 	if version == 0 {
@@ -188,6 +188,15 @@ PRAGMA user_version=1;`)
 			return fail(err)
 		}
 	}
+	if version < 3 {
+		if err = migratePrivate(db, root, version > 0); err != nil {
+			return fail(err)
+		}
+	}
+	info, e := os.Lstat(filepath.Join(root, "private-objects"))
+	if e != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return fail(errors.New("私密资料目录缺失或无效"))
+	}
 	inode, err := os.Stat(filepath.Join(root, "index.db"))
 	if err != nil {
 		return fail(err)
@@ -199,7 +208,7 @@ PRAGMA user_version=1;`)
 	}
 	// Only abandoned atomic writes are removed. Published immutable objects are
 	// never collected here: completed uploads and backup snapshots may refer to them.
-	for _, dir := range []string{"objects", "staging"} {
+	for _, dir := range []string{"objects", "staging", "private-objects"} {
 		matches, _ := filepath.Glob(filepath.Join(root, dir, ".pending-*"))
 		for _, p := range matches {
 			os.Remove(p)
@@ -453,7 +462,7 @@ func (l *Library) Snapshot(ctx context.Context, dest string) error {
 	if err := os.Chmod(filepath.Join(dest, "index.db"), 0600); err != nil {
 		return err
 	}
-	for _, name := range []string{"objects", "staging"} {
+	for _, name := range []string{"objects", "staging", "private-objects"} {
 		if err := os.Mkdir(filepath.Join(dest, name), 0700); err != nil {
 			return err
 		}
@@ -493,8 +502,28 @@ func (l *Library) Snapshot(ctx context.Context, dest string) error {
 			}
 		}
 	}
+	private, err := l.privateRows()
+	if err != nil {
+		return err
+	}
 	l.mu.Unlock()
 	locked = false
+	for _, row := range private {
+		for _, id := range []string{row.object, row.thumb} {
+			if id == "" {
+				continue
+			}
+			if err = ctx.Err(); err != nil {
+				return err
+			}
+			if !IDPattern.MatchString(id) {
+				return errors.New("无效私密文件引用")
+			}
+			if err = os.Link(l.PrivatePath(id), filepath.Join(dest, "private-objects", id)); err != nil {
+				return err
+			}
+		}
+	}
 	for id := range ids {
 		if err = ctx.Err(); err != nil {
 			return err
@@ -576,5 +605,5 @@ func (l *Library) Verify(ctx context.Context) error {
 			}
 		}
 	}
-	return nil
+	return l.verifyPrivate(ctx)
 }

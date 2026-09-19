@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"filippo.io/age"
 )
@@ -80,4 +81,19 @@ func Decrypt(ciphertext []byte, identity age.Identity, limit int64) ([]byte, err
 		return nil, fmt.Errorf("invalid ciphertext or plaintext exceeds limit")
 	}
 	return plain, nil
+}
+
+// Wrap changes the passphrase without re-encrypting immutable content. Historical
+// snapshots keep their original wrapper and therefore their original passphrase.
+func Wrap(key *age.X25519Identity, passphrase string) ([]byte, error) {
+	if len(passphrase) < 12 || len(passphrase) > 1024 {
+		return nil, errors.New("保险库口令需为 12–1024 字节")
+	}
+	recipient, err := age.NewScryptRecipient(passphrase)
+	if err != nil {
+		return nil, err
+	}
+	var b bytes.Buffer
+	err = Encrypt(&b, strings.NewReader(key.String()), recipient)
+	return b.Bytes(), err
 }

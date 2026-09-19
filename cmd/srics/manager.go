@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,12 +25,14 @@ import (
 )
 
 type managerStatus struct {
-	Config      localConfig `json:"config"`
-	Saved       bool        `json:"saved"`
-	Running     bool        `json:"running"`
-	PasswordSet bool        `json:"passwordSet"`
-	URL         string      `json:"url"`
-	Log         string      `json:"log"`
+	Config           localConfig `json:"config"`
+	Saved            bool        `json:"saved"`
+	Running          bool        `json:"running"`
+	PasswordSet      bool        `json:"passwordSet"`
+	VaultSet         bool        `json:"vaultSet"`
+	VaultIdleMinutes int         `json:"vaultIdleMinutes"`
+	URL              string      `json:"url"`
+	Log              string      `json:"log"`
 }
 
 func serviceLabel(path string) string {
@@ -43,7 +46,7 @@ func serviceLoaded(ctx context.Context, path string) bool {
 }
 func readManagerStatus(ctx context.Context, path string) (managerStatus, error) {
 	c, saved, err := loadConfig(path)
-	s := managerStatus{Config: c, Saved: saved, URL: "http://" + c.address(), Log: filepath.Join(filepath.Dir(path), "service.log")}
+	s := managerStatus{Config: c, Saved: saved, VaultIdleMinutes: 10, URL: "http://" + c.address(), Log: filepath.Join(filepath.Dir(path), "service.log")}
 	if err != nil {
 		return s, err
 	}
@@ -57,14 +60,24 @@ func readManagerStatus(ctx context.Context, path string) (managerStatus, error) 
 		if err == nil {
 			defer res.Body.Close()
 			var auth struct {
-				Configured bool `json:"configured"`
+				Configured       bool `json:"configured"`
+				VaultConfigured  bool `json:"vaultConfigured"`
+				VaultIdleMinutes int  `json:"vaultIdleMinutes"`
 			}
 			if res.StatusCode == 200 && json.NewDecoder(io.LimitReader(res.Body, 4096)).Decode(&auth) == nil {
 				s.PasswordSet = auth.Configured
+				s.VaultSet = auth.VaultConfigured
+				s.VaultIdleMinutes = auth.VaultIdleMinutes
 			}
 		}
 	} else if l, err := library.Open(c.Data); err == nil {
 		hash, err := l.Setting("password")
+		wrapped, _ := l.Setting("vault-key")
+		s.VaultSet = len(wrapped) > 0
+		idle, _ := l.Setting("vault-idle")
+		if n, e := strconv.Atoi(string(idle)); e == nil && n >= 1 && n <= 60 {
+			s.VaultIdleMinutes = n
+		}
 		l.Close()
 		s.PasswordSet = err == nil && len(hash) > 0
 	}

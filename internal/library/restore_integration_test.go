@@ -3,13 +3,16 @@
 package library
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/soraincloud/srics-next/internal/backup"
+	"github.com/soraincloud/srics-next/internal/vault"
 )
 
 func TestRealLibraryEncryptedBackupAndIndependentRestore(t *testing.T) {
@@ -50,6 +53,25 @@ func TestRealLibraryEncryptedBackupAndIndependentRestore(t *testing.T) {
 	if err = l.NovelProgress(novel.ID, chapter.ID); err != nil {
 		t.Fatal(err)
 	}
+	wrapped, e := l.PrepareVault("synthetic-independent-vault", "")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = l.SetSetting("vault-key", wrapped); e != nil {
+		t.Fatal(e)
+	}
+	key, e := vault.Unlock(wrapped, "synthetic-independent-vault")
+	if e != nil {
+		t.Fatal(e)
+	}
+	access := vault.NewAccess(context.Background(), key, time.Hour)
+	private := privateUpload(t, l, access, "files", "private-recovery-code.txt", []byte("synthetic-private-recovery-code"))
+	privatePhoto := privateUpload(t, l, access, "private", "private-backup.png", fixture(t))
+	removedPrivate, e := l.ChangePrivate(context.Background(), access, private.ID, "", "trash", private.Revision)
+	if e != nil {
+		t.Fatal(e)
+	}
+	access.Lock()
 	stage := filepath.Join(root, "staging", "snapshot")
 	if err = l.Snapshot(context.Background(), stage); err != nil {
 		t.Fatal(err)
@@ -107,6 +129,27 @@ func TestRealLibraryEncryptedBackupAndIndependentRestore(t *testing.T) {
 	}
 	if err = restored.TrashChapter(novel.ID, removed.ID, restoredNovel.Trash[0].Revision, true); err != nil {
 		t.Fatal("deleted chapter cannot be restored", err)
+	}
+	restoredWrapped, _ := restored.Setting("vault-key")
+	restoredKey, e := vault.Unlock(restoredWrapped, "synthetic-independent-vault")
+	if e != nil {
+		t.Fatal(e)
+	}
+	restoredAccess := vault.NewAccess(context.Background(), restoredKey, time.Hour)
+	defer restoredAccess.Lock()
+	recovered, e := restored.ChangePrivate(context.Background(), restoredAccess, private.ID, "", "restore", removedPrivate.Revision)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !bytes.Equal(privateBytes(t, restored, restoredAccess, recovered, false), []byte("synthetic-private-recovery-code")) {
+		t.Fatal("private restore corrupted")
+	}
+	recovered, e = restored.PrivateItem(restoredAccess, privatePhoto.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !bytes.Equal(privateBytes(t, restored, restoredAccess, recovered, false), fixture(t)) || len(privateBytes(t, restored, restoredAccess, recovered, true)) == 0 {
+		t.Fatal("private photo restore corrupted")
 	}
 	password, _ := restored.Setting("password")
 	if string(password) != "synthetic-password-hash" {
