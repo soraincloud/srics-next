@@ -82,12 +82,12 @@ svg { width: 20px; height: 20px; flex: none; }
 .workspace-identity div > span { display: flex; align-items: center; gap: 8px; margin-top: 5px; color: var(--secondary); font-size: 11px; font-weight: 550; }
 .sidebar-nav { flex: 1; min-height: 0; overflow-y: auto; margin-top: 28px; padding: 4px; scrollbar-width: none; }
 .sidebar-nav::-webkit-scrollbar { display: none; }
-.nav-item { position: relative; display: flex; align-items: center; gap: 11px; min-height: 43px; padding: 11px 16px; border-radius: 999px; font-size: 14px; line-height: 1.4; font-weight: 620; color: var(--secondary); transition: background .18s, color .18s; }
+.nav-item { position: relative; display: flex; align-items: center; gap: 11px; min-height: 43px; padding: 11px 16px 11px 24px; border-radius: 999px; font-size: 14px; line-height: 1.4; font-weight: 620; color: var(--secondary); transition: background .18s, color .18s; }
 .nav-item + .nav-item { margin-top: 5px; }
 .nav-item svg { width: 18px; height: 18px; opacity: .78; }
 .nav-item:hover { color: var(--strong); background: var(--surface-hover); }
 .nav-item[aria-current="page"] { background: var(--active); color: var(--strong); }
-.nav-item[aria-current="page"]::before { content: ""; position: absolute; left: 5px; top: calc(50% - 8px); width: 3px; height: 16px; background: var(--strong); border-radius: 999px; }
+.nav-item[aria-current="page"]::before { content: ""; position: absolute; left: 11px; top: calc(50% - 8px); width: 3px; height: 16px; background: var(--strong); border-radius: 999px; }
 .nav-item[aria-current="page"] svg { opacity: 1; }
 .nav-label { margin: 19px 16px 8px; font-size: 11px; font-weight: 650; color: var(--muted); }
 .sidebar-bottom { padding: 14px 4px 0; border-top: 1px solid var(--line); }
