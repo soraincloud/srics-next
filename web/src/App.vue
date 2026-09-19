@@ -3,8 +3,10 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import Icon from "./Icon.vue";
 import { modules, stages } from "./catalog";
 import { useVerification } from "./useVerification";
+import { useTheme } from "./useTheme";
 
 const { report, connection, error, starting, syncing, refreshing, busy, refresh, start } = useVerification();
+const { theme, toggleTheme } = useTheme();
 const route = ref(window.location.hash || "#/");
 const main = ref<HTMLElement>();
 const expanded = ref(new Set<string>());
@@ -93,11 +95,19 @@ onUnmounted(() => window.removeEventListener("hashchange", routeChanged));
 <template>
   <button class="skip-link" @click="skipToContent">跳到主要内容</button>
   <div class="app-shell">
-    <aside class="sidebar">
+    <header class="app-header">
       <a class="brand" href="#/" aria-label="SRICS Next 资料库">
         <span class="brand-mark"><Icon name="library" /></span>
-        <span>SRICS <span class="brand-next">Next</span></span>
+        <span>SRICS<span class="brand-next">Next</span></span>
       </a>
+      <span class="header-divider"></span><span class="header-label">个人资料库</span>
+      <div class="header-actions">
+        <span class="connection" :class="connection"><span class="connection-dot"></span>{{ connection === "online" ? "本机已连接" : connection === "offline" ? "连接已中断" : "正在连接" }}</span>
+        <button class="theme-toggle" :aria-label="theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'" :title="theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'" @click="toggleTheme"><Icon :name="theme === 'dark' ? 'sun' : 'moon'" /></button>
+      </div>
+    </header>
+    <aside class="sidebar">
+      <div class="workspace-identity"><span class="workspace-avatar">S</span><div><strong>我的空间</strong><span>本机验证版 <span class="version-label">M0</span></span></div></div>
       <nav class="sidebar-nav" aria-label="主导航">
         <a href="#/" class="nav-item" :aria-current="page === 'library' ? 'page' : undefined">
           <Icon name="library" /><span>资料库</span>
@@ -112,13 +122,12 @@ onUnmounted(() => window.removeEventListener("hashchange", routeChanged));
           class="nav-item" :aria-current="activeModule?.id === item.id ? 'page' : undefined">
           <Icon :name="item.icon" /><span>{{ item.name }}</span>
         </a>
-        <p class="nav-label">工具</p>
+      </nav>
+      <div class="sidebar-bottom">
         <a href="#/verify" class="nav-item" :aria-current="page === 'verify' ? 'page' : undefined">
           <Icon name="shield" /><span>恢复验证</span>
           <span v-if="busy" class="nav-activity" aria-label="验证进行中"></span>
         </a>
-      </nav>
-      <div class="sidebar-bottom">
         <a href="#/about" class="nav-item" :aria-current="page === 'about' ? 'page' : undefined">
           <Icon name="info" /><span>关于此版本</span><span class="version-label">M0</span>
         </a>
@@ -133,10 +142,7 @@ onUnmounted(() => window.removeEventListener("hashchange", routeChanged));
           <span v-if="activeModule" class="breadcrumb-divider">/</span>
           <span>{{ title }}</span>
         </div>
-        <span class="connection" :class="connection">
-          <span class="connection-dot"></span>
-          {{ connection === "online" ? "本机已连接" : connection === "offline" ? "连接已中断" : "正在连接" }}
-        </span>
+        <span class="toolbar-note">你的收藏，由你掌握</span>
       </header>
 
       <main ref="main" class="main-content" tabindex="-1" :aria-label="title">
@@ -150,34 +156,37 @@ onUnmounted(() => window.removeEventListener("hashchange", routeChanged));
 
         <template v-if="page === 'library'">
           <section class="page-heading">
-            <div><p class="eyebrow">我的空间</p><h1>资料库</h1><p class="subtitle">收藏、创作和重要文件，都有自己的位置。</p></div>
-            <span class="quiet-badge">本机验证版</span>
+            <div><h1>我的资料库</h1><p class="subtitle">管理收藏、照片和重要文件。让保存和取回，都有把握。</p></div>
+            <a href="#/verify" class="button primary"><Icon name="shield" />恢复验证<Icon name="arrow" /></a>
           </section>
-
-          <div class="library-grid">
-            <a v-for="item in modules" :key="item.id" :href="'#/library/' + item.id"
-              class="library-card" :aria-label="item.name + '，查看功能计划'">
-              <div class="card-top">
-                <span class="module-icon" :class="item.color"><Icon :name="item.icon" /></span>
-                <Icon class="card-arrow" name="chevron-right" />
-              </div>
-              <h2>{{ item.name }}</h2>
-              <p class="card-description">{{ item.sub }}</p>
-              <div class="card-meta"><span>{{ item.kind }}</span><span class="coming-soon">准备中</span></div>
-            </a>
-          </div>
-          <p class="library-note"><Icon name="info" />六类资料功能正在准备中，当前版本暂不接收真实文件。<a href="#/about">查看开发计划<Icon name="chevron-right" /></a></p>
 
           <section class="overview-verification panel" aria-labelledby="overview-verification-heading">
             <div class="verification-emblem" :class="status"><Icon :name="status === 'passed' ? 'check' : 'shield'" /></div>
             <div class="overview-verification-copy">
-              <p class="eyebrow">恢复验证</p><h2 id="overview-verification-heading">{{ statusTitle }}</h2>
-              <p>{{ busy || connection === 'offline' ? statusDescription : complete ? passed + ' / ' + total + ' 项通过 · ' + finished : '先确认备份可以恢复，再安心存放重要资料。' }}</p>
+              <p class="eyebrow">本机恢复验证</p><h2 id="overview-verification-heading">{{ statusTitle }}</h2>
+              <p>{{ busy || connection === 'offline' ? statusDescription : complete ? passed + ' / ' + total + ' 项通过 · ' + finished : '使用临时样本，检查转换、加密、备份和恢复。' }}</p>
             </div>
-            <a href="#/verify" class="button" :class="complete || busy ? 'secondary' : 'primary'">
-              {{ busy ? "查看进度" : complete ? "查看结果" : "前往验证" }}<Icon name="chevron-right" />
+            <a href="#/verify" class="overview-result" :aria-label="busy ? '查看验证进度' : complete ? '查看验证结果' : '打开恢复验证'">
+              <span v-if="complete" class="result-count">{{ passed }}<small>/ {{ total }}</small></span>
+              <span v-else class="result-icon"><Icon :name="busy ? 'clock' : 'arrow'" /></span>
+              <span>{{ busy ? "查看进度" : complete ? "查看结果" : "开始验证" }}<Icon name="arrow" /></span>
             </a>
           </section>
+
+          <div class="section-heading library-section-heading"><h2>资料空间</h2><span class="quiet-badge">6 个独立空间</span></div>
+          <div class="library-grid">
+            <a v-for="item in modules" :key="item.id" :href="'#/library/' + item.id"
+              class="library-card" :aria-label="item.name + '，查看功能计划'">
+              <div class="card-top">
+                <span class="module-icon"><Icon :name="item.icon" /></span>
+                <span class="coming-soon">准备中</span>
+              </div>
+              <h2>{{ item.name }}</h2>
+              <p class="card-description">{{ item.sub }}</p>
+              <div class="card-meta"><span>{{ item.kind }}</span><span class="card-arrow"><Icon name="arrow" /></span></div>
+            </a>
+          </div>
+          <p class="library-note"><Icon name="info" />六类资料功能正在准备中，当前版本暂不接收真实文件。<a href="#/about">查看开发计划<Icon name="chevron-right" /></a></p>
           <p class="page-footnote"><Icon name="computer" />仅在本机运行 · 验证使用临时样本</p>
         </template>
 
@@ -241,7 +250,7 @@ onUnmounted(() => window.removeEventListener("hashchange", routeChanged));
 
         <template v-else-if="activeModule">
           <section class="page-heading module-heading">
-            <span class="module-icon large" :class="activeModule.color"><Icon :name="activeModule.icon" /></span>
+            <span class="module-icon large"><Icon :name="activeModule.icon" /></span>
             <div><p class="eyebrow">我的资料库</p><h1>{{ activeModule.name }}</h1><p class="subtitle">{{ activeModule.sub }}</p></div>
           </section>
           <section class="module-empty panel">
