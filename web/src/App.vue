@@ -2,6 +2,8 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import Icon from "./Icon.vue";
 import LibraryView from "./LibraryView.vue";
+import NovelView from "./NovelView.vue";
+import { canNavigate } from "./navigation";
 import LibraryTools from "./LibraryTools.vue";
 import { api, authenticated, fileSize } from "./api";
 import { clearUploadMemory } from "./uploads";
@@ -16,10 +18,10 @@ const main = ref<HTMLElement>();
 const expanded = ref(new Set<string>());
 const activeModule = computed(() => modules.find((item) => route.value === "#/library/" + item.id || route.value.startsWith("#/library/" + item.id + "/")));
 const itemId = computed(() => route.value.split("/")[3]);
-const available = ["comics", "images", "photos"];
+const available = ["comics", "images", "photos", "novels"];
 const stats = ref<{counts:Record<string,number>;size:number}>({counts:{},size:0});
 async function loadStats(){ try { stats.value = await api("/api/library/stats"); } catch {} }
-async function logout(){ try { await api("/api/auth/logout",{method:"POST"}); clearUploadMemory(); authenticated.value=false; } catch { window.alert("退出失败，请检查连接后重试。"); } }
+async function logout(){ if (!(await canNavigate())) return; try { await api("/api/auth/logout",{method:"POST"}); clearUploadMemory(); authenticated.value=false; } catch { window.alert("退出失败，请检查连接后重试。"); } }
 const page = computed(() => activeModule.value ? "module"
   : route.value === "#/verify" ? "verify" : route.value === "#/about" ? "about"
   : route.value === "#/trash" ? "trash" : route.value === "#/backup" ? "backup" : route.value === "#/" ? "library" : "missing");
@@ -73,8 +75,19 @@ const checkHints: Record<string, string> = {
   restore: "移除本轮源数据，再从备份中取回",
 };
 
+let changingRoute = false;
 async function routeChanged() {
-  route.value = window.location.hash || "#/";
+  if (changingRoute) return;
+  const destination = window.location.hash || "#/";
+  changingRoute = true;
+  const allowed = await canNavigate();
+  changingRoute = false;
+  if (!allowed) {
+    history.replaceState(null, "", route.value);
+    return;
+  }
+  history.replaceState(null, "", destination);
+  route.value = destination;
   await nextTick();
   window.scrollTo({ top: 0, behavior: "instant" });
   main.value?.focus({ preventScroll: true });
@@ -186,7 +199,7 @@ onUnmounted(() => { clearUploadMemory(); window.removeEventListener("hashchange"
               <div class="card-meta"><span>{{ item.kind }}</span><span class="card-arrow"><Icon name="arrow" /></span></div>
             </a>
           </div>
-          <p class="library-note"><Icon name="info" />漫画、图片和个人照片已开放；小说与私密空间正在开发。<a href="#/about">查看开发计划<Icon name="chevron-right" /></a></p>
+          <p class="library-note"><Icon name="info" />漫画、小说、图片和个人照片已开放；私密空间正在开发。<a href="#/about">查看开发计划<Icon name="chevron-right" /></a></p>
           <p class="page-footnote"><Icon name="computer" />仅在本机运行 · 文件保存在你的设备上</p>
         </template>
 
@@ -248,6 +261,7 @@ onUnmounted(() => { clearUploadMemory(); window.removeEventListener("hashchange"
           </details>
         </template>
 
+        <NovelView v-else-if="activeModule?.id === 'novels'" :key="itemId || 'novel-list'" :item-id="itemId" />
         <LibraryView v-else-if="activeModule && available.includes(activeModule.id)" :module="activeModule.id" :item-id="itemId" :name="activeModule.name" :sub="activeModule.sub" />
         <LibraryTools v-else-if="page === 'trash' || page === 'backup'" :page="page" />
 

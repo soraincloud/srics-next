@@ -1,6 +1,6 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 
-import { authenticated, csrf } from "./api";
+import { expireSession, csrf } from "./api";
 
 type CheckStatus = "pending" | "running" | "passed" | "failed" | "blocked";
 export type Report = {
@@ -42,7 +42,7 @@ export function useVerification() {
     pending = (async () => {
       try {
         const response = await fetch("/api/status", { cache: "no-store", signal: pollController!.signal });
-        if (response.status === 401) authenticated.value = false;
+        if (response.status === 401) expireSession();
         if (!response.ok) throw new Error("服务状态不可用");
         const data = await response.json();
         if (!stopped) {

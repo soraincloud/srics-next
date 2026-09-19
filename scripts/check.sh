@@ -2,6 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ./scripts/build.sh
+npm --prefix web test
 go vet ./...
 go test -race ./...
 go test -tags integration ./internal/verification ./internal/library -count=1

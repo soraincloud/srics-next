@@ -1,6 +1,19 @@
 import { ref } from "vue";
 export const csrf = ref("");
 export const authenticated = ref(false);
+export const protectUnsavedSession = ref(false);
+export const sessionExpired = ref(false);
+export function expireSession() {
+  sessionExpired.value = true;
+  if (!protectUnsavedSession.value) authenticated.value = false;
+}
+export class APIError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
 export async function api<T = any>(
   path: string,
   options: RequestInit = {},
@@ -10,15 +23,19 @@ export async function api<T = any>(
   if (csrf.value) headers.set("X-SRICS-CSRF", csrf.value);
   if (typeof options.body === "string")
     headers.set("Content-Type", "application/json");
-  const response = await fetch(path, {
-    ...options,
-    headers,
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(path, { ...options, headers, cache: "no-store" });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") throw error;
+    throw new APIError("无法连接服务，请确认本机程序正在运行后重试", 0);
+  }
   const data = await response.json().catch(() => ({}));
-  if (response.status === 401 && !path.startsWith("/api/auth/"))
-    authenticated.value = false;
-  if (!response.ok) throw new Error(data.error || "操作失败，请稍后再试");
+  if (response.status === 401 && !path.startsWith("/api/auth/")) {
+    expireSession();
+  }
+  if (!response.ok)
+    throw new APIError(data.error || "操作失败，请稍后再试", response.status);
   return data as T;
 }
 export const jsonBody = (value: unknown) => JSON.stringify(value);

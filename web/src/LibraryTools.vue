@@ -11,6 +11,7 @@ const items = ref<Item[]>([]),
   snapshot = ref(0);
 const names: Record<string, string> = {
   comics: "漫画",
+  novels: "小说",
   images: "图片",
   photos: "个人照片",
 };
@@ -94,13 +95,13 @@ onUnmounted(() => {
     <div v-if="items.length" class="trash-list panel">
       <div v-for="item in items" :key="item.id" class="trash-row">
         <span class="module-icon"
-          ><Icon :name="item.module === 'comics' ? 'book' : 'image'"
+          ><Icon :name="item.module === 'comics' ? 'book' : item.module === 'novels' ? 'text' : 'image'"
         /></span>
         <div>
           <strong>{{ item.name }}</strong>
           <p>
             {{ names[item.module] }} ·
-            {{ fileSize(item.pages.reduce((n, p) => n + p.size, 0)) }} · 删除于
+            <template v-if="item.module !== 'novels'">{{ fileSize(item.pages.reduce((n, p) => n + p.size, 0)) }} · </template>删除于
             {{ date(item.deleted) }}
           </p>
         </div>
@@ -116,7 +117,7 @@ onUnmounted(() => {
     <section v-else class="collection-empty panel">
       <span class="empty-icon"><Icon name="trash" /></span>
       <h2>回收站是空的</h2>
-      <p>移除的漫画、图片和照片会在这里保留，恢复后回到原来的位置。</p>
+      <p>已删除的小说、漫画、图片和照片可在这里恢复。章节在各本小说的“已删除”目录恢复。</p>
     </section>
     <button v-if="next" class="button secondary" @click="load(true)">
       加载更多
@@ -149,7 +150,7 @@ onUnmounted(() => {
               ? "页面可以关闭，任务会在服务端继续。"
               : !backup.configured
                 ? "支持本地目录或独立硬盘上的 restic 加密仓库。"
-                : "包含漫画、图片、照片、标签、阅读进度及回收站。"
+                : "包含小说正文与历史版本、漫画、图片、照片、标签、阅读进度及回收站。"
           }}
         </p>
       </div>

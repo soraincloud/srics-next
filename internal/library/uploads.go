@@ -74,7 +74,7 @@ func (l *Library) CreateUpload(up Upload) (Upload, error) {
 	if err := l.Check(); err != nil {
 		return up, err
 	}
-	if !IDPattern.MatchString(up.ID) || !ValidModule(up.Module) || len(up.Files) == 0 || len(up.Files) > 3000 {
+	if !IDPattern.MatchString(up.ID) || !ValidModule(up.Module) || up.Module == "novels" || len(up.Files) == 0 || len(up.Files) > 3000 {
 		return up, errors.New("请选择有效的上传内容（每本最多 3000 页）")
 	}
 	var err error

@@ -85,7 +85,9 @@ func NewID() string {
 	}
 	return hex.EncodeToString(b)
 }
-func ValidModule(m string) bool { return m == "comics" || m == "images" || m == "photos" }
+func ValidModule(m string) bool {
+	return m == "comics" || m == "images" || m == "photos" || m == "novels"
+}
 func Create(root string) error {
 	if err := os.Mkdir(root, 0700); err != nil {
 		return err
@@ -160,7 +162,7 @@ func Open(root string) (*Library, error) {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version > 1 {
+	if version > 2 {
 		return fail(errors.New("数据版本较新，请升级程序后打开"))
 	}
 	if version == 0 {
@@ -179,6 +181,11 @@ PRAGMA user_version=1;`)
 		}
 		if e = tx.Commit(); e != nil {
 			return fail(e)
+		}
+	}
+	if version < 2 {
+		if err = migrateNovels(db, root, version == 1); err != nil {
+			return fail(err)
 		}
 	}
 	inode, err := os.Stat(filepath.Join(root, "index.db"))
@@ -374,7 +381,7 @@ func (l *Library) Update(id, name string, tags []string, revision int) error {
 	if err = l.Check(); err != nil {
 		return err
 	}
-	result, err := l.db.Exec("UPDATE items SET name=?,tags=?,revision=revision+1 WHERE id=? AND module='comics' AND deleted='' AND revision=?", name, string(encoded), id, revision)
+	result, err := l.db.Exec("UPDATE items SET name=?,tags=?,revision=revision+1 WHERE id=? AND module IN ('comics','novels') AND deleted='' AND revision=?", name, string(encoded), id, revision)
 	if err != nil {
 		return err
 	}
@@ -503,6 +510,29 @@ func (l *Library) Snapshot(ctx context.Context, dest string) error {
 	return nil
 }
 func (l *Library) Verify(ctx context.Context) error {
+	if err := l.Check(); err != nil {
+		return err
+	}
+	var integrity string
+	if err := l.db.QueryRowContext(ctx, "PRAGMA quick_check").Scan(&integrity); err != nil {
+		return err
+	}
+	if integrity != "ok" {
+		return errors.New("资料索引完整性检查失败")
+	}
+	rows, err := l.db.QueryContext(ctx, "PRAGMA foreign_key_check")
+	if err != nil {
+		return err
+	}
+	bad := rows.Next()
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	if bad {
+		return errors.New("资料索引包含无效关联")
+	}
 	pages := map[string]Page{}
 	for _, trash := range []bool{false, true} {
 		items, err := l.Items("all", trash)

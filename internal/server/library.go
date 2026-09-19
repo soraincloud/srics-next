@@ -195,6 +195,9 @@ func (a *LibraryAPI) handle(w http.ResponseWriter, r *http.Request) {
 	var err error
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	switch {
+	case len(parts) >= 2 && parts[1] == "novels":
+		a.novels(w, r, parts)
+		return
 	case r.URL.Path == "/api/library" && r.Method == "GET":
 		result, err = a.list(r)
 	case r.URL.Path == "/api/library/stats" && r.Method == "GET":
@@ -352,7 +355,7 @@ func (a *LibraryAPI) list(r *http.Request) (any, error) {
 		if it.Seq > snapshot {
 			continue
 		}
-		if module == "comics" {
+		if module == "comics" || module == "novels" {
 			if !strings.Contains(strings.ToLower(it.Name), name) {
 				continue
 			}
@@ -463,6 +466,10 @@ func (a *LibraryAPI) download(w http.ResponseWriter, r *http.Request, id string)
 		a.zip(w, r, []library.Item{it}, safeName(it.Name)+".zip")
 		return
 	}
+	if it.Module == "novels" {
+		a.downloadNovel(w, r, id)
+		return
+	}
 	p := it.Pages[0]
 	f, err := os.Open(a.store.ObjectPath(p.Object))
 	if err != nil {
@@ -489,7 +496,7 @@ func (a *LibraryAPI) downloadBatch(w http.ResponseWriter, r *http.Request) {
 	module := ""
 	for _, id := range ids {
 		it, err := a.store.Item(id)
-		if err != nil || it.Deleted != "" || it.Module == "comics" || (module != "" && it.Module != module) {
+		if err != nil || it.Deleted != "" || (it.Module != "images" && it.Module != "photos") || (module != "" && it.Module != module) {
 			apiError(w, 400, errors.New("请选择同一空间内的有效图片"))
 			return
 		}

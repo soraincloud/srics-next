@@ -2,7 +2,7 @@
 import { onMounted, ref } from "vue";
 import App from "./App.vue";
 import Icon from "./Icon.vue";
-import { api, authenticated, csrf, jsonBody } from "./api";
+import { api, authenticated, csrf, jsonBody, sessionExpired } from "./api";
 import { useTheme } from "./useTheme";
 const { theme, toggleTheme } = useTheme();
 const ready = ref(false),
@@ -16,6 +16,7 @@ async function check() {
     const state = await api("/api/auth");
     configured.value = state.configured;
     authenticated.value = state.authenticated;
+    if (state.authenticated) sessionExpired.value = false;
     csrf.value = state.csrf;
     ready.value = true;
   } catch (e) {
@@ -33,6 +34,7 @@ async function submit() {
     );
     csrf.value = state.csrf;
     authenticated.value = true;
+    sessionExpired.value = false;
     configured.value = true;
     password.value = "";
   } catch (e) {
