@@ -1,0 +1,31 @@
+name: Verify M0 foundation
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: brew install webp restic
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+      - run: ./scripts/check.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: m0-verification-report
+          path: reports/*.json
+          if-no-files-found: ignore

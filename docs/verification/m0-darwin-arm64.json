@@ -1,0 +1,90 @@
+{
+  "status": "passed",
+  "startedAt": "2026-09-19T12:13:49.88366Z",
+  "finishedAt": "2026-09-19T12:13:56.540768Z",
+  "versions": {
+    "cwebp": "1.6.0\nlibsharpyuv: 0.4.2",
+    "go": "go1.26.5",
+    "platform": "darwin/arm64",
+    "restic": "restic 0.19.1 compiled with go1.27.1 on darwin/arm64"
+  },
+  "checks": [
+    {
+      "id": "tools",
+      "label": "运行依赖",
+      "status": "passed",
+      "detail": "编码器与备份工具可用；仅使用合成测试数据。",
+      "durationMs": 30
+    },
+    {
+      "id": "pixels",
+      "label": "无损 WebP 与元数据",
+      "status": "passed",
+      "detail": "PNG（含完全透明像素）与 JPEG 转换后逐像素一致；EXIF 方向及合成 ICC 字节保留。",
+      "durationMs": 13
+    },
+    {
+      "id": "formats",
+      "label": "原件保留与格式拒绝",
+      "status": "passed",
+      "detail": "已有 WebP 字节不变；坏图、16 位及动画 PNG 被拒绝；数字页序正确。",
+      "durationMs": 0
+    },
+    {
+      "id": "encryption",
+      "label": "文件与名称加密",
+      "status": "passed",
+      "detail": "标准 age 格式可解密取回；私钥仅以独立口令保护后的密文保存。",
+      "durationMs": 413
+    },
+    {
+      "id": "tamper",
+      "label": "错误口令与篡改拒绝",
+      "status": "passed",
+      "detail": "错误口令、末尾篡改、密文截断和未解锁读取全部拒绝。",
+      "durationMs": 411
+    },
+    {
+      "id": "storage",
+      "label": "不可变文件与加密索引",
+      "status": "passed",
+      "detail": "普通与私密对象分区保存，元数据加密；文件持久化后才提交 SQLite 索引。",
+      "durationMs": 35
+    },
+    {
+      "id": "privacy",
+      "label": "落盘明文检查",
+      "status": "passed",
+      "detail": "数据库、WAL、对象及临时文件中未发现合成私密名称、内容、私钥或口令。",
+      "durationMs": 0
+    },
+    {
+      "id": "snapshot",
+      "label": "SQLite 一致性快照",
+      "status": "passed",
+      "detail": "通过 SQLite Backup API 取得快照；之后的新写入不进入该恢复点。",
+      "durationMs": 41
+    },
+    {
+      "id": "backup",
+      "label": "锁定状态下加密备份",
+      "status": "passed",
+      "detail": "未提供保险库口令，restic 完成密文与受保护密钥文件的加密备份。",
+      "durationMs": 3800
+    },
+    {
+      "id": "check",
+      "label": "备份数据完整性",
+      "status": "passed",
+      "detail": "restic check --read-data 已读取并校验全部测试备份数据。",
+      "durationMs": 740
+    },
+    {
+      "id": "restore",
+      "label": "移除源数据后恢复",
+      "status": "passed",
+      "detail": "已移除工作数据和快照源目录，仅凭 restic 仓库及独立口令恢复索引、原件、私密名称与内容。",
+      "durationMs": 1169
+    }
+  ]
+}
