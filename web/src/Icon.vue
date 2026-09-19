@@ -1,6 +1,14 @@
 <script setup lang="ts">
 defineProps<{ name: string }>();
 const paths: Record<string, string[]> = {
+  library: ["M3 3h7v7H3Z", "M14 3h7v7h-7Z", "M3 14h7v7H3Z", "M14 14h7v7h-7Z"],
+  info: ["M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0", "M12 11v6M12 7h.01"],
+  computer: ["M3 4h18v13H3Z", "M8 21h8M12 17v4"],
+  clock: ["M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0", "M12 7v5l3 2"],
+  download: ["M12 3v12m-4-4 4 4 4-4", "M4 15v6h16v-6"],
+  play: ["m8 4 12 8-12 8Z"],
+  "chevron-right": ["m9 5 7 7-7 7"],
+  "chevron-left": ["m15 5-7 7 7 7"],
   home: ["M3 10 12 3l9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z", "M9 21v-8h6v8"],
   book: [
     "M12 5v16",

@@ -16,7 +16,9 @@ brew install webp restic
 
 构建后可直接双击 `start.command`。页面位于 `http://127.0.0.1:19473`；Go 程序已内嵌前端，运行时不需要 Node.js。当前编码器和 restic 从本机安装读取，随发布包交付依赖及正式安装向导属于 M5。
 
-点击“运行恢复验证”会生成隔离测试资料，运行 11 项检查并清理样本。也可执行 `./bin/srics verify`，或运行 `./scripts/check.sh` 完成构建、静态检查、并发测试和恢复集成测试。验证失败会返回非零退出码；缺少工具不会跳过后声称成功。CLI 支持 `verify --report reports/new-report.json`，不会覆盖已有报告。
+进入“恢复验证”并点击“开始验证”，会生成隔离测试资料，运行 11 项检查并清理样本。也可执行 `./bin/srics verify`，或运行 `./scripts/check.sh` 完成构建、静态检查、并发测试和恢复集成测试。验证失败会返回非零退出码；缺少工具不会跳过后声称成功。CLI 支持 `verify --report reports/new-report.json`，不会覆盖已有报告。
+
+界面采用系统字体与简洁的资料卡片，桌面使用侧边栏，手机使用底部导航。设计与交互约定见 [界面记录](docs/INTERFACE.md)。
 
 M0 仅允许回环地址，未开放真实文件上传和保险库 HTTP 接口。当前不配置云账号，也不读取旧 SRICS 数据。
 

@@ -1,604 +1,294 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import Icon from "./Icon.vue";
+import { modules, stages } from "./catalog";
+import { useVerification } from "./useVerification";
 
-type Check = {
-  id: string;
-  label: string;
-  status: string;
-  detail?: string;
-  durationMs: number;
-};
-type Report = {
-  status: string;
-  startedAt: string;
-  finishedAt?: string;
-  versions: Record<string, string>;
-  checks: Check[];
-};
-const view = ref("overview");
-const selected = ref("");
-const report = ref<Report | null>(null);
-const error = ref("");
-const connected = ref(false);
-const starting = ref(false);
-let timer: ReturnType<typeof setTimeout> | undefined;
-let stopped = false;
-let polling = false;
-let pollController: AbortController | undefined;
-
-const modules = [
-  {
-    id: "comics",
-    name: "漫画",
-    icon: "book",
-    color: "peach",
-    stage: "M2",
-    sub: "一目录，一本收藏",
-    features: [
-      "文件夹上传与数字页序",
-      "名称、标签与组合搜索",
-      "第一页预览、连续阅读",
-      "无损 WebP、整本 ZIP 下载",
-    ],
-  },
-  {
-    id: "novels",
-    name: "小说",
-    icon: "text",
-    color: "sand",
-    stage: "M3",
-    sub: "阅读，也留住写下的文字",
-    features: [
-      "名称、标签与组合搜索",
-      "章节新增、编辑、删除和排序",
-      "自动保存、冲突检查和修订",
-      "独立阅读模式、TXT 导出",
-    ],
-  },
-  {
-    id: "images",
-    name: "图片",
-    icon: "image",
-    color: "sage",
-    stage: "M2",
-    sub: "随手收下，随机遇见",
-    features: [
-      "批量上传与原件下载",
-      "列表与随机照片墙",
-      "同轮不重复、独立随机池",
-      "无需名称、标签或搜索",
-    ],
-  },
-  {
-    id: "photos",
-    name: "个人照片",
-    icon: "camera",
-    color: "blue",
-    stage: "M3",
-    sub: "原样保存生活的片段",
-    features: [
-      "原始字节与元数据保留",
-      "批量上传、简单列表",
-      "上传与备份状态分开显示",
-      "原件取回、回收站恢复",
-    ],
-  },
-  {
-    id: "private",
-    name: "私密照片",
-    icon: "lock",
-    color: "lavender",
-    stage: "M4",
-    sub: "只在解锁之后可见",
-    features: [
-      "原件、名称和预览加密",
-      "解锁后的列表与随机浏览",
-      "各设备独立解锁、闲置锁定",
-      "加密备份与原件取回",
-    ],
-  },
-  {
-    id: "files",
-    name: "个人文件",
-    icon: "folder",
-    color: "rose",
-    stage: "M4",
-    sub: "重要资料，妥善安放",
-    features: [
-      "整个模块默认加密",
-      "可设置名称、按名称搜索",
-      "批量上传与原件下载",
-      "删除、回收站与恢复",
-    ],
-  },
-];
-const stages = [
-  {
-    id: "M0",
-    name: "工程与恢复验证",
-    detail: "无损转换、加密存储、SQLite 快照与 restic 恢复",
-    state: "本次交付",
-  },
-  {
-    id: "M1",
-    name: "公共基础",
-    detail: "登录、上传任务、存储检查、回收站与备份状态",
-    state: "下一阶段",
-  },
-  {
-    id: "M2",
-    name: "漫画与图片",
-    detail: "文件夹导入、阅读下载、列表与随机照片墙",
-    state: "待开发",
-  },
-  {
-    id: "M3",
-    name: "小说与个人照片",
-    detail: "章节编辑、可靠保存、阅读与原件备份",
-    state: "待开发",
-  },
-  {
-    id: "M4",
-    name: "私密内容",
-    detail: "保险库会话、加密名称、受保护的列表和预览",
-    state: "待开发",
-  },
-  {
-    id: "M5",
-    name: "发布与恢复验收",
-    detail: "简单安装、后台启动、云端备份与整机恢复",
-    state: "待开发",
-  },
-];
-const activeModule = computed(() =>
-  modules.find((m) => m.id === selected.value),
-);
-const busy = computed(
-  () => starting.value || report.value?.status === "running",
-);
-const passed = computed(
-  () => report.value?.checks.filter((c) => c.status === "passed").length || 0,
-);
+const { report, connection, error, starting, syncing, refreshing, busy, refresh, start } = useVerification();
+const route = ref(window.location.hash || "#/");
+const main = ref<HTMLElement>();
+const expanded = ref(new Set<string>());
+const activeModule = computed(() => modules.find((item) => route.value === "#/library/" + item.id));
+const page = computed(() => activeModule.value ? "module"
+  : route.value === "#/verify" ? "verify" : route.value === "#/about" ? "about"
+  : route.value === "#/" ? "library" : "missing");
+const title = computed(() => activeModule.value?.name
+  || ({ library: "资料库", verify: "恢复验证", about: "关于此版本", missing: "页面不存在" } as Record<string, string>)[page.value]);
+const inLibrary = computed(() => page.value === "library" || page.value === "module");
+const passed = computed(() => report.value?.checks.filter((item) => item.status === "passed").length || 0);
 const total = computed(() => report.value?.checks.length || 11);
-const percent = computed(() => Math.round((passed.value / total.value) * 100));
-const statusText = computed(
-  () =>
-    ({
-      idle: "等待首次验证",
-      running: "验证进行中",
-      passed: "恢复验证通过",
-      failed: "验证需要处理",
-    })[report.value?.status || "idle"],
-);
-const finished = computed(() =>
-  report.value?.finishedAt
-    ? new Date(report.value.finishedAt).toLocaleString("zh-CN", {
-        hour12: false,
-      })
-    : "尚未运行",
-);
-const statusLabel = (s: string) =>
-  ({
-    pending: "待验证",
-    running: "进行中",
-    passed: "通过",
-    failed: "失败",
-    blocked: "未执行",
-  })[s] || s;
-function navigate(next: string) {
-  view.value = next;
-  selected.value = "";
-  window.scrollTo({ top: 0, behavior: "smooth" });
+const currentCheck = computed(() => report.value?.checks.find((item) => item.status === "running"));
+const failedCheck = computed(() => report.value?.checks.find((item) => item.status === "failed"));
+const complete = computed(() => !busy.value && ["passed", "failed"].includes(report.value?.status || ""));
+const status = computed(() => connection.value === "offline" ? "offline"
+  : starting.value || syncing.value ? "running" : report.value?.status || "idle");
+const statusTitle = computed(() => ({
+  idle: "准备好，做一次恢复验证",
+  running: starting.value ? "正在启动验证" : syncing.value ? "正在同步验证进度" : "正在验证恢复能力",
+  passed: "恢复验证通过",
+  failed: "有一项验证需要处理",
+  offline: "与本机服务的连接已中断",
+})[status.value]);
+const statusDescription = computed(() => {
+  if (status.value === "offline") return "连接恢复后会自动同步结果，你也可以手动重试。";
+  if (status.value === "running") return currentCheck.value
+    ? "正在检查：" + currentCheck.value.label : "可以离开这个页面，验证会继续在本机运行。";
+  if (status.value === "passed") return "本轮样本已完成加密备份，并在移除源数据后成功恢复。";
+  if (status.value === "failed") return failedCheck.value?.label || "展开下方结果查看原因，处理后可以重新验证。";
+  return "用临时样本检查转换、加密、备份和恢复的完整流程。";
+});
+const actionLabel = computed(() => starting.value ? "正在启动…" : busy.value ? "验证进行中…"
+  : report.value?.status === "failed" ? "重新验证" : report.value?.status === "passed" ? "再次验证" : "开始验证");
+const finished = computed(() => report.value?.finishedAt
+  ? new Date(report.value.finishedAt).toLocaleString("zh-CN", {
+      month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false,
+    }) : "");
+const duration = computed(() => {
+  if (!report.value?.finishedAt) return "";
+  return ((new Date(report.value.finishedAt).getTime() - new Date(report.value.startedAt).getTime()) / 1000).toFixed(1) + " 秒";
+});
+const checkLabels: Record<string, string> = { pending: "等待", running: "进行中", passed: "通过", failed: "失败", blocked: "未执行" };
+const checkHints: Record<string, string> = {
+  tools: "确认图片编码器与备份工具可以运行",
+  pixels: "核对转换前后的像素与照片元数据",
+  formats: "保留已有 WebP，识别不支持的格式",
+  encryption: "检查文件、名称与密钥的加密保存",
+  tamper: "确认错误口令和损坏数据被拒绝",
+  storage: "核对文件与索引的写入和取回",
+  privacy: "检查测试目录中的敏感明文",
+  snapshot: "为同一恢复点保存一致的索引",
+  backup: "在保险库锁定时执行加密备份",
+  check: "读取并校验全部测试备份数据",
+  restore: "移除本轮源数据，再从备份中取回",
+};
+
+async function routeChanged() {
+  route.value = window.location.hash || "#/";
+  await nextTick();
+  window.scrollTo({ top: 0, behavior: "instant" });
+  main.value?.focus({ preventScroll: true });
 }
-async function refresh() {
-  if (polling || stopped) return;
-  polling = true;
-  pollController = new AbortController();
-  try {
-    const response = await fetch("/api/status", {
-      cache: "no-store",
-      signal: pollController.signal,
-    });
-    if (!response.ok) throw new Error("无法读取服务状态");
-    const data = await response.json();
-    report.value = data.report;
-    connected.value = true;
-  } catch (e) {
-    if (!stopped) connected.value = false;
-  }
-  polling = false;
-  if (!stopped) {
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(
-      refresh,
-      report.value?.status === "running" ? 800 : 3000,
-    );
-  }
-}
-async function startVerification() {
-  if (busy.value) return;
-  view.value = "verification";
-  selected.value = "";
-  error.value = "";
-  starting.value = true;
-  try {
-    const response = await fetch("/api/verification", {
-      method: "POST",
-      headers: { "X-SRICS-Request": "verification" },
-    });
-    if (!response.ok)
-      throw new Error(
-        response.status === 409
-          ? "已有验证任务在运行。"
-          : "验证未能启动，请确认服务仍在运行。",
-      );
-    if (timer) clearTimeout(timer);
-    if (report.value) report.value.status = "running";
-    await refresh();
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : "连接失败，请重试。";
-  } finally {
-    starting.value = false;
-  }
+function skipToContent() { main.value?.focus(); }
+function toggleCheck(id: string) {
+  const next = new Set(expanded.value);
+  next.has(id) ? next.delete(id) : next.add(id);
+  expanded.value = next;
 }
 function downloadReport() {
-  if (!report.value || !report.value.finishedAt) return;
-  const url = URL.createObjectURL(
-    new Blob([JSON.stringify(report.value, null, 2)], {
-      type: "application/json",
-    }),
-  );
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `srics-verification-${report.value.finishedAt.replace(/[:.]/g, "-")}.json`;
-  link.click();
-  URL.revokeObjectURL(url);
+  if (!complete.value || !report.value) return;
+  const url = URL.createObjectURL(new Blob([JSON.stringify(report.value, null, 2)], { type: "application/json" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "srics-verification-" + (report.value.finishedAt || "report").replace(/[:.]/g, "-") + ".json";
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-onMounted(refresh);
-onUnmounted(() => {
-  stopped = true;
-  if (timer) clearTimeout(timer);
-  pollController?.abort();
-});
+watch(title, (value) => { document.title = value + " · SRICS Next"; }, { immediate: true });
+watch(() => report.value?.startedAt, () => { expanded.value = new Set(); });
+watch(() => failedCheck.value?.id, (id) => { if (id) expanded.value = new Set([...expanded.value, id]); });
+onMounted(() => window.addEventListener("hashchange", routeChanged));
+onUnmounted(() => window.removeEventListener("hashchange", routeChanged));
 </script>
 
 <template>
+  <button class="skip-link" @click="skipToContent">跳到主要内容</button>
   <div class="app-shell">
     <aside class="sidebar">
-      <a
-        class="brand"
-        href="#"
-        aria-label="SRICS Next 概览"
-        @click.prevent="navigate('overview')"
-        ><span class="brand-mark"><i></i><i></i><i></i></span
-        ><span>SRICS <small>NEXT</small></span></a
-      >
-      <div class="workspace">
-        <span class="workspace-avatar">S</span>
-        <div>我的资料库<small>PERSONAL ARCHIVE</small></div>
-        <span class="local-dot"></span>
-      </div>
-      <nav aria-label="主要导航">
-        <button
-          :class="{ active: view === 'overview' && !selected }"
-          @click="navigate('overview')"
-        >
-          <Icon name="home" />概览
-        </button>
-        <p class="nav-label">资料空间</p>
-        <button
-          v-for="m in modules"
-          :key="m.id"
-          :class="{ active: selected === m.id }"
-          @click="
-            selected = m.id;
-            view = 'module';
-          "
-        >
-          <Icon :name="m.icon" />{{ m.name
-          }}<span v-if="m.stage === 'M4'" class="mini-lock"
-            ><Icon name="lock"
-          /></span>
-        </button>
+      <a class="brand" href="#/" aria-label="SRICS Next 资料库">
+        <span class="brand-mark"><Icon name="library" /></span>
+        <span>SRICS <span class="brand-next">Next</span></span>
+      </a>
+      <nav class="sidebar-nav" aria-label="主导航">
+        <a href="#/" class="nav-item" :aria-current="page === 'library' ? 'page' : undefined">
+          <Icon name="library" /><span>资料库</span>
+        </a>
+        <p class="nav-label">收藏与创作</p>
+        <a v-for="item in modules.slice(0, 4)" :key="item.id" :href="'#/library/' + item.id"
+          class="nav-item" :aria-current="activeModule?.id === item.id ? 'page' : undefined">
+          <Icon :name="item.icon" /><span>{{ item.name }}</span>
+        </a>
+        <p class="nav-label">私密空间</p>
+        <a v-for="item in modules.slice(4)" :key="item.id" :href="'#/library/' + item.id"
+          class="nav-item" :aria-current="activeModule?.id === item.id ? 'page' : undefined">
+          <Icon :name="item.icon" /><span>{{ item.name }}</span>
+        </a>
         <p class="nav-label">工具</p>
-        <button
-          :class="{ active: view === 'verification' }"
-          @click="navigate('verification')"
-        >
-          <Icon name="shield" />验证中心<span v-if="busy" class="pulse"></span>
-        </button>
-        <button
-          :class="{ active: view === 'progress' }"
-          @click="navigate('progress')"
-        >
-          <Icon name="steps" />开发进度
-        </button>
+        <a href="#/verify" class="nav-item" :aria-current="page === 'verify' ? 'page' : undefined">
+          <Icon name="shield" /><span>恢复验证</span>
+          <span v-if="busy" class="nav-activity" aria-label="验证进行中"></span>
+        </a>
       </nav>
-      <div class="sidebar-foot">
-        <span class="connection" :class="{ offline: !connected }"></span
-        >{{ connected ? "本机服务已连接" : "正在连接本机服务"
-        }}<small>v0.1 · M0 开发预览</small>
+      <div class="sidebar-bottom">
+        <a href="#/about" class="nav-item" :aria-current="page === 'about' ? 'page' : undefined">
+          <Icon name="info" /><span>关于此版本</span><span class="version-label">M0</span>
+        </a>
+        <div class="local-note"><Icon name="computer" /><span>本机验证版</span></div>
       </div>
     </aside>
 
-    <main>
-      <header class="topbar">
-        <div>
-          <span class="breadcrumb">我的资料库</span><span class="slash">/</span
-          >{{
-            activeModule?.name ||
-            {
-              overview: "概览",
-              verification: "验证中心",
-              progress: "开发进度",
-            }[view]
-          }}
+    <div class="workspace">
+      <header class="toolbar">
+        <div class="breadcrumb">
+          <a v-if="activeModule" href="#/" class="back-link"><Icon name="chevron-left" />资料库</a>
+          <span v-if="activeModule" class="breadcrumb-divider">/</span>
+          <span>{{ title }}</span>
         </div>
-        <span class="mode-pill"><span></span>仅本机访问</span>
+        <span class="connection" :class="connection">
+          <span class="connection-dot"></span>
+          {{ connection === "online" ? "本机已连接" : connection === "offline" ? "连接已中断" : "正在连接" }}
+        </span>
       </header>
-      <div class="page">
-        <template v-if="view === 'overview'">
-          <div class="page-heading">
-            <div>
-              <p class="eyebrow">A PLACE FOR WHAT MATTERS</p>
-              <h1>让收藏与生活，各有所归。</h1>
-              <p class="subtitle">六个独立空间，一个属于你的资料库。</p>
-            </div>
-            <span class="edition">01<span>FOUNDATION</span></span>
-          </div>
-          <section class="hero">
-            <div class="hero-copy">
-              <span class="section-kicker"
-                ><span class="tiny-square"></span>第一步 ·
-                验证数据能够回来</span
-              >
-              <h2>保存之后，<br />也要能够安心取回。</h2>
-              <p>
-                底层验证已接入。使用自动生成的测试文件，走完转换、加密、备份与恢复的完整过程。
-              </p>
-              <button
-                class="primary"
-                :disabled="busy || !connected"
-                @click="startVerification"
-              >
-                <Icon
-                  :name="busy ? 'refresh' : 'shield'"
-                  :class="{ spin: busy }"
-                />{{ busy ? "验证正在运行" : "运行恢复验证"
-                }}<Icon name="arrow" /></button
-              ><span class="hero-note">仅处理合成样本，不读取你的个人文件</span>
-            </div>
-            <div class="archive-art" aria-hidden="true">
-              <div class="art-orbit"></div>
-              <div class="art-card card-back">
-                <div class="art-lines"></div>
-              </div>
-              <div class="art-card card-middle"><Icon name="image" /></div>
-              <div class="art-card card-front">
-                <Icon name="lock" /><span>YOUR ARCHIVE</span>
-                <div class="art-line"></div>
-              </div>
-              <div class="art-check"><Icon name="check" /></div>
-              <span class="art-caption">KEEP IT. RECOVER IT.</span>
-            </div>
+
+      <main ref="main" class="main-content" tabindex="-1" :aria-label="title">
+        <div v-if="connection === 'offline'" class="notice warning" role="alert">
+          <Icon name="info" />
+          <div><strong>暂时无法连接服务</strong><p>请确认 SRICS 仍在运行。恢复连接后，进度会自动更新。</p></div>
+          <button class="button small secondary" :disabled="refreshing" @click="refresh">
+            {{ refreshing ? "连接中…" : "重新连接" }}
+          </button>
+        </div>
+
+        <template v-if="page === 'library'">
+          <section class="page-heading">
+            <div><p class="eyebrow">我的空间</p><h1>资料库</h1><p class="subtitle">收藏、创作和重要文件，都有自己的位置。</p></div>
+            <span class="quiet-badge">本机验证版</span>
           </section>
-          <div class="overview-metrics">
-            <div>
-              <span class="metric-label">当前阶段</span
-              ><strong>M0 <small>基础验证</small></strong>
-            </div>
-            <div>
-              <span class="metric-label">最近验证</span
-              ><strong class="metric-status" :class="report?.status">{{
-                statusText
-              }}</strong>
-            </div>
-            <div>
-              <span class="metric-label">验证项目</span
-              ><strong
-                >{{ passed }} <small>/ {{ total }} 项通过</small></strong
-              >
-            </div>
+
+          <div class="library-grid">
+            <a v-for="item in modules" :key="item.id" :href="'#/library/' + item.id"
+              class="library-card" :aria-label="item.name + '，查看功能计划'">
+              <div class="card-top">
+                <span class="module-icon" :class="item.color"><Icon :name="item.icon" /></span>
+                <Icon class="card-arrow" name="chevron-right" />
+              </div>
+              <h2>{{ item.name }}</h2>
+              <p class="card-description">{{ item.sub }}</p>
+              <div class="card-meta"><span>{{ item.kind }}</span><span class="coming-soon">准备中</span></div>
+            </a>
           </div>
-          <div class="section-heading">
-            <h2>你的六个资料空间</h2>
-            <span>功能范围已确定 · 业务功能待开发</span>
-          </div>
-          <section class="module-grid" aria-label="六类资料空间">
-            <button
-              v-for="m in modules"
-              :key="m.id"
-              class="module-card"
-              @click="
-                selected = m.id;
-                view = 'module';
-              "
-            >
-              <span class="module-icon" :class="m.color"
-                ><Icon :name="m.icon" /></span
-              ><span class="module-stage">{{ m.stage }}</span>
-              <h3>{{ m.name }}</h3>
-              <p>{{ m.sub }}</p>
-              <span class="module-footer"
-                >查看功能约定<Icon name="arrow"
-              /></span>
-            </button>
+          <p class="library-note"><Icon name="info" />六类资料功能正在准备中，当前版本暂不接收真实文件。<a href="#/about">查看开发计划<Icon name="chevron-right" /></a></p>
+
+          <section class="overview-verification panel" aria-labelledby="overview-verification-heading">
+            <div class="verification-emblem" :class="status"><Icon :name="status === 'passed' ? 'check' : 'shield'" /></div>
+            <div class="overview-verification-copy">
+              <p class="eyebrow">恢复验证</p><h2 id="overview-verification-heading">{{ statusTitle }}</h2>
+              <p>{{ busy || connection === 'offline' ? statusDescription : complete ? passed + ' / ' + total + ' 项通过 · ' + finished : '先确认备份可以恢复，再安心存放重要资料。' }}</p>
+            </div>
+            <a href="#/verify" class="button" :class="complete || busy ? 'secondary' : 'primary'">
+              {{ busy ? "查看进度" : complete ? "查看结果" : "前往验证" }}<Icon name="chevron-right" />
+            </a>
           </section>
-          <div class="quiet-note">
-            <Icon name="lock" />
-            <p>
-              个人文件与私密照片将默认加密。当前预览版提供底层验证，尚不接收真实资料。
-            </p>
-          </div>
+          <p class="page-footnote"><Icon name="computer" />仅在本机运行 · 验证使用临时样本</p>
         </template>
 
-        <template v-else-if="view === 'verification'">
-          <div class="page-heading">
-            <div>
-              <p class="eyebrow">TRUST, VERIFIED</p>
-              <h1>验证中心</h1>
-              <p class="subtitle">用一次真正的恢复，检查数据保存的完整过程。</p>
-            </div>
-            <button
-              class="primary"
-              :disabled="busy || !connected"
-              @click="startVerification"
-            >
-              <Icon
-                :name="busy ? 'refresh' : 'shield'"
-                :class="{ spin: busy }"
-              />{{ busy ? "验证中…" : "运行验证" }}
-            </button>
-          </div>
-          <p v-if="error" class="error-message" role="alert">{{ error }}</p>
-          <div v-if="!connected" class="error-message" role="alert">
-            无法连接本机服务。启动服务后，这里会自动重新连接。
-          </div>
-          <section class="verification-summary" aria-live="polite">
-            <div class="status-orb" :class="report?.status">
-              <Icon
-                :name="
-                  report?.status === 'passed'
-                    ? 'check'
-                    : report?.status === 'failed'
-                      ? 'close'
-                      : 'shield'
-                "
-              />
-            </div>
-            <div class="summary-text">
-              <h2>{{ statusText }}</h2>
-              <p>
-                {{
-                  busy
-                    ? "每项结果均来自实际执行，请保持服务运行。"
-                    : `最近完成：${finished}`
-                }}
-              </p>
-            </div>
-            <div class="fraction">
-              {{ passed }}<span>/ {{ total }}</span>
-            </div>
-            <div class="progress-track">
-              <div :style="{ width: percent + '%' }"></div>
-            </div>
+        <template v-else-if="page === 'verify'">
+          <section class="page-heading">
+            <div><p class="eyebrow">安心保存，从能恢复开始</p><h1>恢复验证</h1><p class="subtitle">检查从文件保存到备份取回的完整流程。</p></div>
           </section>
-          <div class="verification-notice">
-            样本与临时备份会在验证后清理。这验证的是本机技术流程；云端、独立硬盘与整机部署将在发布阶段验收。
-          </div>
-          <section class="check-list" aria-label="验证步骤">
-            <article
-              v-for="(check, index) in report?.checks || []"
-              :key="check.id"
-              class="check-row"
-              :class="check.status"
-            >
-              <span class="check-number"
-                ><Icon v-if="check.status === 'passed'" name="check" /><Icon
-                  v-else-if="check.status === 'failed'"
-                  name="close"
-                /><span v-else>{{
-                  String(index + 1).padStart(2, "0")
-                }}</span></span
-              >
-              <div>
-                <h3>{{ check.label }}</h3>
-                <p v-if="check.detail">{{ check.detail }}</p>
+          <section class="verification-summary panel" :class="status" aria-labelledby="verification-heading">
+            <div class="summary-top">
+              <div class="verification-emblem" :class="status">
+                <span v-if="status === 'running'" class="spinner"></span>
+                <Icon v-else :name="status === 'passed' ? 'check' : status === 'failed' || status === 'offline' ? 'info' : 'shield'" />
               </div>
-              <span class="check-result"
-                >{{ statusLabel(check.status)
-                }}<small v-if="check.durationMs"
-                  >{{ (check.durationMs / 1000).toFixed(1) }} s</small
-                ></span
-              >
-            </article>
+              <div class="summary-copy" aria-live="polite" aria-atomic="true">
+                <h2 id="verification-heading">{{ statusTitle }}</h2><p>{{ statusDescription }}</p>
+              </div>
+            </div>
+            <div v-if="busy || complete" class="verification-progress">
+              <div class="progress-label"><span>{{ passed }} / {{ total }} 项通过</span><span>{{ busy ? "请保持本机服务运行" : "用时 " + duration }}</span></div>
+              <progress :value="passed" :max="total" aria-label="验证通过的项目数"></progress>
+            </div>
+            <div class="summary-actions">
+              <button class="button primary" :disabled="busy || connection !== 'online'" @click="start">
+                <Icon v-if="!busy" :name="complete ? 'refresh' : 'play'" />{{ actionLabel }}
+              </button>
+              <button v-if="complete" class="button secondary" @click="downloadReport"><Icon name="download" />下载验证报告</button>
+              <span v-if="finished && !busy" class="last-run">完成于 {{ finished }}</span>
+              <span v-else class="last-run">仅使用临时样本，不会读取你的文件</span>
+            </div>
+            <p v-if="error" class="inline-error" role="alert">{{ error }}</p>
           </section>
-          <div class="report-footer">
-            <p>报告不包含口令、私钥或样本内容。服务重启后页面记录会清空。</p>
-            <button
-              class="secondary"
-              :disabled="!report?.finishedAt || busy"
-              @click="downloadReport"
-            >
-              下载验证报告<Icon name="arrow" />
-            </button>
-          </div>
-          <details
-            v-if="report && Object.keys(report.versions).length"
-            class="version-details"
-          >
-            <summary>查看本次验证环境</summary>
-            <dl>
-              <template v-for="(value, key) in report.versions" :key="key"
-                ><dt>{{ key }}</dt>
-                <dd>{{ value }}</dd></template
-              >
-            </dl>
+
+          <section v-if="report?.checks.length" class="check-section" aria-labelledby="checks-heading">
+            <div class="section-heading"><h2 id="checks-heading">验证项目</h2><span>点击项目查看详情</span></div>
+            <div class="check-list panel">
+              <div v-for="(check, index) in report.checks" :key="check.id" class="check-item" :class="check.status">
+                <button class="check-toggle" :aria-expanded="expanded.has(check.id)" :aria-controls="'check-' + check.id" @click="toggleCheck(check.id)">
+                  <span class="check-indicator">
+                    <Icon v-if="check.status === 'passed'" name="check" />
+                    <Icon v-else-if="check.status === 'failed'" name="close" />
+                    <span v-else-if="check.status === 'running'" class="spinner"></span>
+                    <span v-else>{{ String(index + 1).padStart(2, "0") }}</span>
+                  </span>
+                  <span class="check-copy"><strong>{{ check.label }}</strong><span>{{ checkHints[check.id] }}</span></span>
+                  <span class="check-status">{{ checkLabels[check.status] }}</span>
+                  <Icon class="disclosure" name="chevron-right" />
+                </button>
+                <div v-if="expanded.has(check.id)" :id="'check-' + check.id" class="check-detail">
+                  <p>{{ check.detail || (check.status === "pending" ? "开始后将按顺序执行。" : check.status === "running" ? "正在执行，结果会自动更新。" : check.status === "blocked" ? "前面的项目未通过，本项没有执行。" : "本项未返回详细信息。") }}</p>
+                  <span v-if="['passed', 'failed'].includes(check.status)">耗时 {{ check.durationMs }} ms</span>
+                </div>
+              </div>
+            </div>
+          </section>
+          <p class="page-footnote">这是样本验证结果；你的实际文件上传和备份将在后续版本开放。</p>
+          <details v-if="report && Object.keys(report.versions || {}).length" class="environment panel">
+            <summary>运行环境<span>技术信息</span><Icon name="chevron-right" /></summary>
+            <dl><template v-for="(value, key) in report.versions" :key="key"><dt>{{ key }}</dt><dd>{{ value }}</dd></template></dl>
           </details>
         </template>
 
-        <template v-else-if="view === 'progress'">
-          <div class="page-heading">
-            <div>
-              <p class="eyebrow">BUILT ONE STEP AT A TIME</p>
-              <h1>开发进度</h1>
-              <p class="subtitle">
-                六类核心功能均属于第一版。每一步都有明确的交付与验收。
-              </p>
-            </div>
-          </div>
-          <section class="roadmap">
-            <article
-              v-for="s in stages"
-              :key="s.id"
-              :class="{ current: s.id === 'M0' }"
-            >
-              <span class="stage-number">{{ s.id }}</span>
-              <div>
-                <h2>{{ s.name }}</h2>
-                <p>{{ s.detail }}</p>
-              </div>
-              <span class="stage-state">{{ s.state }}</span>
-            </article>
+        <template v-else-if="activeModule">
+          <section class="page-heading module-heading">
+            <span class="module-icon large" :class="activeModule.color"><Icon :name="activeModule.icon" /></span>
+            <div><p class="eyebrow">我的资料库</p><h1>{{ activeModule.name }}</h1><p class="subtitle">{{ activeModule.sub }}</p></div>
           </section>
-          <div class="quiet-note">
-            <Icon name="shield" />
-            <p>
-              首版正式使用前，需要完成登录、局域网
-              HTTPS、各设备解锁权限及独立备份恢复验收。
-            </p>
-          </div>
+          <section class="module-empty panel">
+            <span class="empty-icon"><Icon name="clock" /></span>
+            <h2>这个空间正在准备中</h2>
+            <p>当前版本先完成存储与恢复验证。<br />{{ activeModule.name }}功能开放后，就可以在这里管理你的内容。</p>
+            <a href="#/about" class="button primary">查看开发计划<Icon name="chevron-right" /></a>
+            <a href="#/" class="text-link">返回资料库</a>
+          </section>
+          <section class="planned-features" aria-labelledby="features-heading">
+            <div class="section-heading"><h2 id="features-heading">将会支持</h2><span>已确定的功能范围</span></div>
+            <ul class="feature-grid"><li v-for="(feature, index) in activeModule.features" :key="feature"><span>{{ String(index + 1).padStart(2, "0") }}</span>{{ feature }}</li></ul>
+          </section>
         </template>
 
-        <template v-else-if="activeModule">
-          <button class="back-link" @click="navigate('overview')">
-            ← 返回概览
-          </button>
-          <div class="module-detail">
-            <span class="module-icon large" :class="activeModule.color"
-              ><Icon :name="activeModule.icon"
-            /></span>
-            <p class="eyebrow">{{ activeModule.stage }} · 待开发</p>
-            <h1>{{ activeModule.name }}</h1>
-            <p class="subtitle">{{ activeModule.sub }}</p>
-            <ul>
-              <li v-for="f in activeModule.features" :key="f">
-                <span></span>{{ f }}
+        <template v-else-if="page === 'about'">
+          <section class="page-heading"><div><p class="eyebrow">一步一步，妥善保存</p><h1>关于此版本</h1><p class="subtitle">一个属于你自己的本地资料库。</p></div><span class="quiet-badge">M0</span></section>
+          <section class="about-intro panel">
+            <span class="brand-mark"><Icon name="library" /></span>
+            <div><h2>SRICS Next</h2><p>当前是本机验证版。你可以实际运行加密与恢复验证，六类资料的上传、浏览与管理将按下面的顺序开放。</p></div>
+          </section>
+          <section aria-labelledby="roadmap-heading">
+            <div class="section-heading"><h2 id="roadmap-heading">开发计划</h2><span>当前阶段 M0</span></div>
+            <ol class="roadmap panel">
+              <li v-for="stage in stages" :key="stage.id" :class="{ current: stage.id === 'M0' }">
+                <span class="stage-number">{{ stage.id }}</span><div><h3>{{ stage.name }}</h3><p>{{ stage.detail }}</p></div><span class="stage-state">{{ stage.state }}</span>
               </li>
-            </ul>
-            <div class="detail-note">
-              这是已确定的功能范围，当前尚未开放上传与管理。
-            </div>
-            <button class="secondary" @click="navigate('progress')">
-              查看开发顺序<Icon name="arrow" />
-            </button>
+            </ol>
+          </section>
+          <div class="about-notes">
+            <div><Icon name="computer" /><h3>从本机开始</h3><p>当前仅本机访问，后续加入单用户登录与局域网部署。</p></div>
+            <div><Icon name="shield" /><h3>让恢复可验证</h3><p>验证报告可下载留存。服务重启后，最近一次结果会清空。</p></div>
           </div>
+          <a href="#/verify" class="text-link">打开恢复验证<Icon name="arrow" /></a>
         </template>
-        <footer class="page-footer">
-          <span>SRICS NEXT</span><span>私有存储 · 简单使用 · 可验证恢复</span>
-        </footer>
-      </div>
-    </main>
+
+        <section v-else class="module-empty panel">
+          <span class="empty-icon"><Icon name="folder" /></span><h1>找不到这个页面</h1>
+          <p>链接可能已失效，请从资料库重新进入。</p><a href="#/" class="button primary">返回资料库</a>
+        </section>
+      </main>
+    </div>
+
+    <nav class="mobile-tabs" aria-label="底部导航">
+      <a href="#/" :aria-current="inLibrary ? 'page' : undefined"><Icon name="library" /><span>资料库</span></a>
+      <a href="#/verify" :aria-current="page === 'verify' ? 'page' : undefined"><span class="tab-icon"><Icon name="shield" /><span v-if="busy" class="nav-activity"></span></span><span>恢复验证</span></a>
+      <a href="#/about" :aria-current="page === 'about' ? 'page' : undefined"><Icon name="info" /><span>关于</span></a>
+    </nav>
   </div>
 </template>
