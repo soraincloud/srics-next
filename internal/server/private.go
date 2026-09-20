@@ -173,6 +173,9 @@ func (a *LibraryAPI) privateAPI(w http.ResponseWriter, r *http.Request, parts []
 	r = r.WithContext(ctx)
 	var result any
 	switch {
+	case len(parts) >= 3 && parts[2] == "transfers":
+		a.transfers(w, r, s.vault, transferParts(r.URL.Path, "/api/vault/transfers"))
+		return
 	case r.URL.Path == "/api/vault/activity" && r.Method == "POST":
 		if !s.vault.Touch() {
 			privateError(w, vault.ErrLocked)
@@ -220,7 +223,11 @@ func (a *LibraryAPI) privateAPI(w http.ResponseWriter, r *http.Request, parts []
 			if !decode(w, r, &b) {
 				return
 			}
-			result, err = a.store.ChangePrivate(ctx, s.vault, parts[3], b.Name, b.Action, b.Revision)
+			if b.Action == "purge" {
+				err = a.store.PurgePrivate(ctx, s.vault, parts[3], b.Revision)
+			} else {
+				result, err = a.store.ChangePrivate(ctx, s.vault, parts[3], b.Name, b.Action, b.Revision)
+			}
 		default:
 			methodNotAllowed(w, "PUT, PATCH")
 			return
@@ -258,6 +265,9 @@ func (a *LibraryAPI) privateList(ctx context.Context, access *vault.Access, q pr
 	}
 	if len(q.Query) > 1024 || len(q.Seed) > 128 || len(q.After) > 128 {
 		return nil, errors.New("搜索条件过长")
+	}
+	if err := a.store.ExpirePrivateTrash(ctx, access, a.trashDays); err != nil {
+		return nil, err
 	}
 	items, err := a.store.PrivateItems(ctx, access)
 	if err != nil {

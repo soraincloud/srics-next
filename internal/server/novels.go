@@ -84,6 +84,14 @@ func (a *LibraryAPI) novels(w http.ResponseWriter, r *http.Request, p []string) 
 			return
 		}
 		err = a.store.TrashChapter(p[2], p[4], b.Revision, len(p) == 6)
+	case len(p) == 6 && p[3] == "chapters" && p[5] == "purge" && r.Method == "POST":
+		var b struct {
+			Revision int `json:"revision"`
+		}
+		if !decode(w, r, &b) {
+			return
+		}
+		err = a.store.PurgeChapter(p[2], p[4], b.Revision)
 	case len(p) == 6 && p[3] == "chapters" && p[5] == "versions" && r.Method == "GET":
 		result, err = a.store.Versions(p[2], p[4])
 	case len(p) == 7 && p[3] == "chapters" && p[5] == "versions" && r.Method == "GET":

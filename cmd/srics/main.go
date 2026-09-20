@@ -24,7 +24,7 @@ import (
 	"github.com/soraincloud/srics-next/internal/webui"
 )
 
-var version = "0.2.0-dev"
+var version = "0.3.0-rc1"
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -153,6 +153,7 @@ func run(args []string) error {
 				return err
 			}
 			app.EnableCloudBackup(cloud)
+			app.StartMaintenance(savedConfig.TrashDays, savedConfig.Retention)
 			app.StartBackupSchedule(savedConfig.BackupDailyAt)
 		}
 		srv := &http.Server{Handler: app, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}

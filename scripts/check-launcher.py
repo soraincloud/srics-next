@@ -1,4 +1,8 @@
 """Exercise the packaged background service using an isolated synthetic library."""
+import hashlib
+import time
+import re
+import signal
 import http.cookiejar
 import json
 import os
@@ -17,7 +21,7 @@ with tempfile.TemporaryDirectory(prefix='srics-launcher-test-') as temporary:
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))
         port = sock.getsockname()[1]
-    config = dict(data=str(root / 'library'), port=port, backupRepository='', backupPasswordFile='')
+    config = dict(data=str(root / 'library'), port=port, backupRepository='', backupPasswordFile='', autoRestart=True)
     request = dict(config=config, password='synthetic-launcher-test-password', currentPassword='')
     env = dict(os.environ, PATH='/usr/bin:/bin:/usr/sbin:/sbin')
     def manager(action, body=None, success=True):
@@ -42,6 +46,21 @@ with tempfile.TemporaryDirectory(prefix='srics-launcher-test-') as temporary:
         assert manager('start')['running']
         assert manager('start')['running'], 'repeated start failed'
         assert manager('info')['running'], 'service did not outlive start command'
+        target = f'gui/{os.getuid()}/com.soraincloud.srics.' + hashlib.sha256(str(config_path).encode()).hexdigest()
+        def pid():
+            output = subprocess.run(['/bin/launchctl', 'print', target], capture_output=True, text=True, check=True).stdout
+            match = re.search(r'\bpid = (\d+)', output)
+            return int(match.group(1)) if match else None
+        original_pid = pid()
+        assert original_pid, 'missing owned test service pid'
+        os.kill(original_pid, signal.SIGKILL)
+        deadline = time.monotonic() + 45
+        while time.monotonic() < deadline:
+            if pid() not in (None, original_pid) and manager('info')['running']:
+                break
+            time.sleep(1)
+        else:
+            raise AssertionError('test service did not restart after a crash')
         assert api('/api/auth')['configured']
         try:
             api('/api/auth/setup', {'password':'replacement-password'})
@@ -59,6 +78,20 @@ with tempfile.TemporaryDirectory(prefix='srics-launcher-test-') as temporary:
         assert not manager('stop')['running']
         assert request['password'] not in config_path.read_text()
         assert request['password'] not in (root / 'service.log').read_text()
-        print('PASS: local setup, port conflict, background lifetime, duplicate start/stop, web setup removal, login, configuration lock, session invalidation')
+        backup_password = root / 'backup-password.txt'
+        backup_password.write_text('synthetic-update-password'); backup_password.chmod(0o600)
+        config.update(backupRepository=str(root / 'backup'), backupPasswordFile=str(backup_password))
+        request['password'] = ''; manager('configure', request)
+        restic = binary.parent / 'tools' / 'restic'
+        subprocess.run([str(restic), '--repo', config['backupRepository'], 'init'], env=dict(env, RESTIC_PASSWORD='synthetic-update-password'), check=True, capture_output=True)
+        assert manager('start')['running']
+        prepared = manager('prepare-update')
+        assert not prepared['running'], 'update preparation left service running'
+        update_dir = pathlib.Path(prepared['updateBackup'])
+        record = json.loads((update_dir / 'update.json').read_text())
+        assert len(record['snapshot']) == 64 and pathlib.Path(record['previousApp']).is_dir()
+        assert (update_dir / 'config.json').stat().st_mode & 0o777 == 0o600
+        assert manager('start')['running'], 'could not restart after update preparation'
+        print('PASS: crash restart, update backup + retained app + restart, local setup, port conflict, background lifetime, duplicate start/stop, web setup removal, login, configuration lock, session invalidation')
     finally:
         manager('stop')

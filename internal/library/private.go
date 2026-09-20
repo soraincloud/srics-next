@@ -240,6 +240,8 @@ func privateThumbnail(data []byte) ([]byte, error) {
 	return out.Bytes(), err
 }
 func (l *Library) ReceivePrivate(ctx context.Context, a *vault.Access, id, module, name string, size int64, src io.Reader) (PrivateItem, error) {
+	l.objectsMu.RLock()
+	defer l.objectsMu.RUnlock()
 	var zero PrivateItem
 	if !IDPattern.MatchString(id) || (module != "private" && module != "files") {
 		return zero, errors.New("无效私密上传")

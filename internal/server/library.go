@@ -42,6 +42,10 @@ type LibraryAPI struct {
 	loginMu            sync.Mutex
 	failures           int
 	nextLogin          time.Time
+	trashDays          int
+	maintenanceError   string
+	maintenanceMu      sync.Mutex
+	retention          backup.Retention
 	backup             backup.Client
 	cloud              backup.Client
 	backupMu           sync.Mutex
@@ -209,6 +213,9 @@ func (a *LibraryAPI) handle(w http.ResponseWriter, r *http.Request) {
 	var err error
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	switch {
+	case len(parts) >= 2 && parts[1] == "transfers":
+		a.transfers(w, r, nil, transferParts(r.URL.Path, "/api/transfers"))
+		return
 	case len(parts) >= 2 && parts[1] == "vault":
 		a.privateAPI(w, r, parts)
 		return
@@ -217,6 +224,12 @@ func (a *LibraryAPI) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	case r.URL.Path == "/api/library" && r.Method == "GET":
 		result, err = a.list(r)
+	case r.URL.Path == "/api/storage" && r.Method == "GET":
+		var usage library.StorageUsage
+		usage, err = a.store.StorageUsage()
+		a.maintenanceMu.Lock()
+		result = map[string]any{"usage": usage, "trashDays": a.trashDays, "error": a.maintenanceError}
+		a.maintenanceMu.Unlock()
 	case r.URL.Path == "/api/library/stats" && r.Method == "GET":
 		var items []library.Item
 		items, err = a.store.Items("all", false)
@@ -242,6 +255,9 @@ func (a *LibraryAPI) handle(w http.ResponseWriter, r *http.Request) {
 			result, err = a.store.Upload(parts[2])
 		} else if r.Method == "DELETE" {
 			err = a.store.Cancel(parts[2])
+			if err == nil {
+				err = a.store.Collect()
+			}
 		} else {
 			methodNotAllowed(w, "GET, DELETE")
 			return
@@ -285,6 +301,8 @@ func (a *LibraryAPI) handle(w http.ResponseWriter, r *http.Request) {
 				methodNotAllowed(w, "GET, PATCH, DELETE")
 				return
 			}
+		} else if len(parts) == 4 && parts[3] == "purge" && r.Method == "POST" {
+			err = a.store.Purge(id)
 		} else if len(parts) == 4 && parts[3] == "restore" && r.Method == "POST" {
 			err = a.store.Trash(id, true)
 		} else if len(parts) == 4 && parts[3] == "progress" && r.Method == "PUT" {
@@ -308,6 +326,23 @@ func (a *LibraryAPI) handle(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/api/download" && r.Method == "GET":
 		a.downloadBatch(w, r)
 		return
+	case r.URL.Path == "/api/backup/retention" && (r.Method == "GET" || r.Method == "POST"):
+		target := r.URL.Query().Get("target")
+		if target != "local" && target != "cloud" {
+			apiError(w, 400, errors.New("无效备份目标"))
+			return
+		}
+		if r.Method == "GET" {
+			result, err = a.retentionPreview(r.Context(), target)
+		} else {
+			var req struct {
+				Token string `json:"token"`
+			}
+			if !decode(w, r, &req) {
+				return
+			}
+			err = a.cleanBackup(target, req.Token)
+		}
 	case r.URL.Path == "/api/backup/snapshots" && r.Method == "GET":
 		target := r.URL.Query().Get("target")
 		if target != "local" && target != "cloud" {

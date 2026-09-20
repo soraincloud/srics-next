@@ -10,6 +10,7 @@ import {
   runUpload,
   running,
   uploads,
+  uploadProgress,
   type Upload,
 } from "./uploads";
 const props = defineProps<{ module: string }>();
@@ -21,14 +22,29 @@ const dialog = ref<HTMLDialogElement>(),
   error = ref(""),
   working = ref(false),
   resume = ref<Upload>();
-const batchIDs = ref<string[]>([]);
+const batchIDs = ref<string[]>([]),
+  batchComic = ref(false),
+  batchNames = ref<Record<string, string>>({});
+const groups = computed(() => {
+  const grouped = new Map<string, File[]>();
+  for (const file of selected.value) {
+    const key = batchComic.value
+      ? file.webkitRelativePath.split("/")[1] || file.name
+      : name.value;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(file);
+  }
+  return Array.from(grouped, ([key, files]) => ({ key, files }));
+});
 const invalid = computed(() =>
   selected.value.filter(
     (f) =>
       f.size === 0 ||
       f.size > 64 * 1024 * 1024 ||
       (props.module === "comics" &&
-        (f.webkitRelativePath.split("/").length > 2 ||
+        ((batchComic.value
+          ? f.webkitRelativePath.split("/").length !== 3
+          : f.webkitRelativePath.split("/").length > 2) ||
           !/\.(webp|jpe?g|png)$/i.test(f.name))),
   ),
 );
@@ -51,10 +67,14 @@ function choose(event: Event) {
   if (!resume.value)
     name.value =
       files[0]?.webkitRelativePath.split("/")[0] || files[0]?.name || "";
+  batchNames.value = Object.fromEntries(
+    groups.value.map((g) => [g.key, g.key]),
+  );
   error.value = "";
 }
 async function open(task?: Upload) {
   resume.value = task;
+  batchComic.value = false;
   batchIDs.value = [];
   name.value = task?.name || "";
   tags.value = task?.tags.join("，") || "";
@@ -71,33 +91,37 @@ async function start() {
   try {
     if (resume.value) {
       await resumeUpload(resume.value, selected.value);
-    } else if (props.module === "comics") {
-      batchIDs.value[0] ||= crypto.randomUUID().replaceAll("-", "");
-      const id = await createUpload(
-        props.module,
-        name.value,
-        tags.value
-          .split(/[,，]/)
-          .map((s) => s.trim())
-          .filter(Boolean),
-        selected.value,
-        batchIDs.value[0],
-      );
-      await runUpload(id);
     } else {
-      for (let index = 0; index < selected.value.length; index++) {
-        const file = selected.value[index]!;
-        batchIDs.value[index] ||= crypto.randomUUID().replaceAll("-", "");
-        const id = await createUpload(
-          props.module,
-          file.name,
-          [],
-          [file],
-          batchIDs.value[index],
+      const batches =
+        props.module === "comics"
+          ? groups.value
+          : selected.value.map((file) => ({ key: file.name, files: [file] }));
+      const ids: string[] = [];
+      for (let i = 0; i < batches.length; i++) {
+        const group = batches[i]!;
+        batchIDs.value[i] ||= crypto.randomUUID().replaceAll("-", "");
+        ids.push(
+          await createUpload(
+            props.module,
+            props.module === "comics"
+              ? batchComic.value
+                ? batchNames.value[group.key] || group.key
+                : name.value
+              : group.key,
+            props.module === "comics"
+              ? tags.value
+                  .split(/[,，]/)
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+              : [],
+            group.files,
+            batchIDs.value[i],
+          ),
         );
+      }
+      for (const id of ids)
         if (uploads.value.find((task) => task.id === id)?.state !== "complete")
           await runUpload(id);
-      }
     }
     dialog.value?.close();
     selected.value = [];
@@ -173,7 +197,9 @@ onMounted(() => loadUploads().catch((e) => (error.value = e.message)));
         <h2>
           {{
             module === "comics"
-              ? "导入一本漫画"
+              ? batchComic
+                ? "批量导入漫画"
+                : "导入一本漫画"
               : module === "photos"
                 ? "保存照片原件"
                 : "上传图片"
@@ -190,14 +216,27 @@ onMounted(() => loadUploads().catch((e) => (error.value = e.message)));
       </button>
     </header>
     <form class="form-stack" @submit.prevent="start">
+      <label v-if="module === 'comics' && !resume" class="batch-choice"
+        ><input
+          v-model="batchComic"
+          type="checkbox"
+          :disabled="working || !!selected.length"
+        />批量导入多个漫画文件夹（选择它们的共同上级目录）</label
+      >
       <label class="file-picker"
         ><Icon :name="module === 'comics' ? 'folder' : 'image'" /><strong>{{
-          module === "comics" ? "选择漫画文件夹" : "选择一张或多张图片"
+          module === "comics"
+            ? batchComic
+              ? "选择漫画总目录"
+              : "选择漫画文件夹"
+            : "选择一张或多张图片"
         }}</strong
         ><span
           >{{
             module === "comics"
-              ? "一层图片目录，页序按文件名中的数字排列"
+              ? batchComic
+                ? "选择包含各本漫画文件夹的总目录，页序按数字排列"
+                : "一层图片目录，页序按文件名中的数字排列"
               : "保留原始文件及元数据"
           }}
           · 单文件最多 64 MB</span
@@ -227,7 +266,10 @@ onMounted(() => loadUploads().catch((e) => (error.value = e.message)));
                 {{ f.webkitRelativePath || f.name }}
               </li>
             </ul>
-            <p>不支持嵌套目录、空文件、超大文件或此漫画格式。</p>
+            <p>
+              请检查目录层级、空文件、超大文件或格式。批量模式只接受“总目录 /
+              漫画目录 / 图片”三层结构。
+            </p>
             <button
               v-if="!resume"
               type="button"
@@ -238,8 +280,17 @@ onMounted(() => loadUploads().catch((e) => (error.value = e.message)));
             </button>
           </div>
         </div>
-        <template v-if="module === 'comics'"
-          ><label
+        <template v-if="module === 'comics'">
+          <div v-if="batchComic" class="form-stack">
+            <label v-for="group in groups" :key="group.key"
+              >{{ group.key }} · {{ group.files.length }} 页<input
+                v-model="batchNames[group.key]"
+                required
+                maxlength="160"
+                :disabled="working || !!batchIDs.length"
+            /></label>
+          </div>
+          <label v-else
             >漫画名称<input
               v-model="name"
               required
@@ -264,7 +315,7 @@ onMounted(() => loadUploads().catch((e) => (error.value = e.message)));
       </template>
       <p v-if="error" class="inline-error" role="alert">{{ error }}</p>
       <p v-if="working" class="save-status" aria-live="polite">
-        正在保存并校验，请保留此页面。每个成功的文件都会记录进度。
+        {{ uploadProgress || "正在准备上传…" }}。分块进度已保存，刷新后可继续。
       </p>
       <div class="dialog-actions">
         <button

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import Icon from "./Icon.vue";
+import ActionConfirm from "./ActionConfirm.vue";
+const confirmation = ref<InstanceType<typeof ActionConfirm>>();
 import {
   api,
   APIError,
@@ -286,6 +288,28 @@ async function move(c: Chapter, delta: number) {
     actionBusy.value = false;
   }
 }
+async function purgeChapter(c: Chapter) {
+  if (
+    blocked.value ||
+    !(await confirmation.value?.ask(
+      "彻底删除章节？",
+      "章节正文和全部修订将从当前资料库永久删除，不能撤销。",
+    ))
+  )
+    return;
+  actionBusy.value = true;
+  try {
+    await api(chapterPath(c.id) + "/purge", {
+      method: "POST",
+      body: jsonBody({ revision: c.revision }),
+    });
+    emit("reload");
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    actionBusy.value = false;
+  }
+}
 async function trashChapter(c: Chapter, restore = false) {
   if (blocked.value || !(await leave())) return;
   actionBusy.value = true;
@@ -454,6 +478,7 @@ onUnmounted(() => {
 });
 </script>
 <template>
+  <ActionConfirm ref="confirmation" />
   <section class="page-heading reader-heading novel-heading">
     <div>
       <a href="#/library/novels" class="back-link"
@@ -544,7 +569,13 @@ onUnmounted(() => {
               :disabled="blocked"
               @click="trashChapter(c, true)"
             >
-              恢复
+              恢复</button
+            ><button
+              class="button small secondary"
+              :disabled="blocked"
+              @click="purgeChapter(c)"
+            >
+              彻底删除
             </button></template
           >
         </li>

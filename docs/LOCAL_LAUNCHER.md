@@ -1,5 +1,7 @@
 # 本机启动程序
 
+> 0.3.0-rc1 更新：分块续传、清理策略、本机自启、更新前保护和恢复副本的单项取回已接入。本文保留阶段记录；当前范围以 [收尾记录](RELEASE_READINESS.md) 和 [验收清单](ACCEPTANCE.md) 为准。
+
 2026-09-19。当前 macOS 开发包：`dist/SRICS Next.app`，由 `scripts/package-macos.sh` 构建，包含 SwiftUI 配置窗口、内嵌网页的 Go 服务、cwebp / restic 及其非系统动态库。
 
 ## 使用

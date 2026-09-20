@@ -128,6 +128,8 @@ func (l *Library) CreateUpload(up Upload) (Upload, error) {
 	return up, l.saveUpload(up)
 }
 func (l *Library) Receive(ctx context.Context, id string, index int, sourceHash string, src io.Reader, c media.Converter) (Upload, error) {
+	l.objectsMu.RLock()
+	defer l.objectsMu.RUnlock()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	up, err := l.Upload(id)
@@ -314,5 +316,8 @@ func (l *Library) Cancel(id string) error {
 		return errors.New("已完成的内容请从资料库移到回收站")
 	}
 	up.State = "cancelled"
+	if _, err := l.db.Exec("DELETE FROM transfers WHERE private=0 AND json_extract(payload,'$.parent')=?", id); err != nil {
+		return err
+	}
 	return l.saveUpload(up)
 }

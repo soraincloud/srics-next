@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 type Client struct {
@@ -48,6 +49,9 @@ func (c Client) runLimited(ctx context.Context, dir string, limit int, args ...s
 		return nil, errors.New("备份目录需为绝对路径")
 	}
 	cmd := exec.CommandContext(ctx, c.Binary, append(options, args...)...)
+	// Let restic release its repository lock on cancellation before force killing.
+	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
+	cmd.WaitDelay = 5 * time.Second
 	cmd.Dir = dir
 	for _, v := range os.Environ() {
 		// An inherited AWS role/token or debug sink must never override this target.

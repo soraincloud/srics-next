@@ -2,6 +2,10 @@
 import { computed, onMounted, onUnmounted, ref, watch, nextTick } from "vue";
 import Icon from "./Icon.vue";
 import PrivateImage from "./PrivateImage.vue";
+import PrivateUploads from "./PrivateUploads.vue";
+import ActionConfirm from "./ActionConfirm.vue";
+const confirmation = ref<InstanceType<typeof ActionConfirm>>();
+const uploader = ref<InstanceType<typeof PrivateUploads>>();
 import { fileSize, jsonBody, APIError } from "./api";
 import {
   vaultOpen,
@@ -22,7 +26,6 @@ type Item = {
   deleted: string;
   revision: number;
 };
-type Upload = { id: string; file: File; state: string; error: string };
 const props = defineProps<{ module: string }>();
 const isPhoto = computed(() => props.module === "private");
 const title = computed(() => (isPhoto.value ? "私密照片" : "个人文件"));
@@ -40,10 +43,7 @@ const items = ref<Item[]>([]),
   seed = ref(""),
   snapshot = ref(0),
   selection = ref<string[]>([]),
-  selecting = ref(false),
-  queue = ref<Upload[]>([]),
-  uploading = ref(false),
-  uploadVisible = ref(false);
+  selecting = ref(false);
 const picker = ref<HTMLInputElement>(),
   viewer = ref<HTMLDialogElement>(),
   viewing = ref<Item>(),
@@ -68,9 +68,6 @@ function clearPrivate() {
   selection.value = [];
   selecting.value = false;
   query.value = "";
-  queue.value = [];
-  uploadVisible.value = false;
-  uploading.value = false;
   password.value = "";
   viewing.value = undefined;
   editing.value = undefined;
@@ -177,6 +174,14 @@ async function rename(it: Item) {
   editor.value?.showModal();
 }
 async function change(it: Item, action: string, name = "") {
+  if (
+    action === "purge" &&
+    !(await confirmation.value?.ask(
+      "彻底删除这项私密资料？",
+      "当前资料库中的加密文件将永久删除，不能从回收站恢复。历史备份按其保留规则独立保存。",
+    ))
+  )
+    return;
   error.value = "";
   saving.value = true;
   try {
@@ -199,65 +204,6 @@ async function change(it: Item, action: string, name = "") {
     saving.value = false;
   }
 }
-function choose(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const files = Array.from(input.files || []);
-  input.value = "";
-  error.value = "";
-  if (files.length + queue.value.length > 200) {
-    error.value = "每批最多上传 200 个文件";
-    return;
-  }
-  for (const file of files) {
-    queue.value.push({
-      id: crypto.randomUUID().replaceAll("-", ""),
-      file,
-      state: "等待上传",
-      error: "",
-    });
-  }
-  uploadVisible.value = true;
-  void upload();
-}
-async function upload() {
-  if (uploading.value) return;
-  uploading.value = true;
-  try {
-    for (const task of queue.value) {
-      if (!vaultOpen.value || controller.signal.aborted) break;
-      if (task.state === "已完成") continue;
-      task.state = "上传中";
-      task.error = "";
-      const limit = isPhoto.value ? 64 * 1024 * 1024 : 10 * 1024 * 1024 * 1024;
-      if (task.file.size > limit) {
-        task.state = "失败";
-        task.error = isPhoto.value ? "照片最大 64 MiB" : "文件最大 10 GiB";
-        continue;
-      }
-      try {
-        await vaultAPI(`/api/vault/items/${task.id}`, {
-          method: "PUT",
-          signal: controller.signal,
-          body: task.file,
-          headers: {
-            "X-File-Name": encodeURIComponent(task.file.name),
-            "X-File-Size": String(task.file.size),
-            "X-File-Module": props.module,
-          },
-        });
-        task.state = "已完成";
-      } catch (e) {
-        task.state = "失败";
-        task.error = e instanceof Error ? e.message : "上传失败";
-        if (e instanceof APIError && (e.status === 423 || e.status === 401))
-          break;
-      }
-    }
-  } finally {
-    uploading.value = false;
-    if (vaultOpen.value && !controller.signal.aborted) await load();
-  }
-}
 onMounted(async () => {
   try {
     await vaultStatus();
@@ -275,6 +221,7 @@ onUnmounted(() => {
 });
 </script>
 <template>
+  <ActionConfirm ref="confirmation" />
   <section class="page-heading">
     <div>
       <h1>{{ title }}</h1>
@@ -347,20 +294,14 @@ onUnmounted(() => {
           @click="load()"
         >
           <Icon name="shuffle" />换一批</button
-        ><button v-if="!trash" class="button primary" @click="picker?.click()">
+        ><button
+          v-if="!trash"
+          class="button primary"
+          @click="uploader?.chooseFiles()"
+        >
           <Icon name="upload" />上传
         </button>
       </div>
-      <input
-        ref="picker"
-        type="file"
-        :accept="
-          isPhoto ? 'image/jpeg,image/png,image/webp,image/gif' : undefined
-        "
-        multiple
-        hidden
-        @change="choose"
-      />
     </div>
     <div v-if="!isPhoto" class="private-search">
       <Icon name="search" /><input
@@ -372,45 +313,7 @@ onUnmounted(() => {
         @input="search"
       />
     </div>
-    <section
-      v-if="uploadVisible"
-      class="panel private-uploads"
-      aria-label="私密上传任务"
-    >
-      <div class="section-heading">
-        <h2>{{ uploading ? "正在加密上传" : "上传任务" }}</h2>
-        <button
-          v-if="!uploading"
-          class="text-link"
-          @click="
-            queue = [];
-            uploadVisible = false;
-          "
-        >
-          收起
-        </button>
-      </div>
-      <div v-for="task in queue" :key="task.id" class="private-upload-row">
-        <span>{{ task.file.name }}</span
-        ><small :class="{ 'inline-error': task.state === '失败' }">{{
-          task.error || task.state
-        }}</small>
-      </div>
-      <button
-        v-if="!uploading && queue.some((t) => t.state === '失败')"
-        class="button secondary"
-        @click="upload"
-      >
-        重试失败项
-      </button>
-      <p class="vault-hint">
-        {{
-          isPhoto
-            ? "原件最大 64 MiB，支持 JPEG、PNG、WebP、GIF。"
-            : "单个文件最大 10 GiB。"
-        }}锁定或离开此页会取消未完成的上传；重试会重新传输整个文件。
-      </p>
-    </section>
+    <PrivateUploads ref="uploader" :module="module" @complete="load()" />
     <div class="section-heading private-count">
       <span
         >{{ trash ? "回收站 · " : "" }}{{ total }} 项<span
@@ -495,6 +398,13 @@ onUnmounted(() => {
             @click="change(it, 'restore')"
           >
             恢复</button
+          ><button
+            v-if="trash"
+            class="button small secondary"
+            :disabled="saving"
+            @click="change(it, 'purge')"
+          >
+            彻底删除</button
           ><template v-else
             ><button
               class="icon-button"
@@ -524,7 +434,7 @@ onUnmounted(() => {
       <button
         v-if="!query && !trash"
         class="button secondary"
-        @click="picker?.click()"
+        @click="uploader?.chooseFiles()"
       >
         选择文件
       </button>

@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from "vue";
 import Icon from "./Icon.vue";
+import ActionConfirm from "./ActionConfirm.vue";
+const confirmation = ref<InstanceType<typeof ActionConfirm>>(),
+  storage = ref<any>(),
+  retentionPlan = ref<any>();
 import { api, changed, fileSize, type Item } from "./api";
 const props = defineProps<{ page: string }>();
 const items = ref<Item[]>([]),
@@ -10,24 +14,42 @@ const items = ref<Item[]>([]),
   busy = ref(false),
   next = ref(""),
   snapshot = ref(0);
-type BackupSnapshot = { id: string; time: string; files?: number; bytes?: number };
-const history = ref<BackupSnapshot[]>([]), historyLoaded = ref(false), historyBusy = ref(false),
-  historyError = ref(""), historyNext = ref(""), historyTotal = ref(0);
+type BackupSnapshot = {
+  id: string;
+  time: string;
+  files?: number;
+  bytes?: number;
+};
+const history = ref<BackupSnapshot[]>([]),
+  historyLoaded = ref(false),
+  historyBusy = ref(false),
+  historyError = ref(""),
+  historyNext = ref(""),
+  historyTotal = ref(0);
 let historyVersion = 0;
 async function loadHistory(more = false) {
   const version = ++historyVersion;
   historyBusy.value = true;
   historyError.value = "";
-  if (!more) { history.value = []; historyLoaded.value = false; historyNext.value = ""; }
+  if (!more) {
+    history.value = [];
+    historyLoaded.value = false;
+    historyNext.value = "";
+  }
   try {
-    const data = await api(`/api/backup/snapshots?target=${target.value}${more ? "&after=" + historyNext.value : ""}`);
+    const data = await api(
+      `/api/backup/snapshots?target=${target.value}${more ? "&after=" + historyNext.value : ""}`,
+    );
     if (stopped || version !== historyVersion) return;
-    history.value = more ? [...history.value, ...data.snapshots] : data.snapshots;
+    history.value = more
+      ? [...history.value, ...data.snapshots]
+      : data.snapshots;
     historyNext.value = data.next;
     historyTotal.value = data.total;
     historyLoaded.value = true;
   } catch (e) {
-    if (!stopped && version === historyVersion) historyError.value = (e as Error).message;
+    if (!stopped && version === historyVersion)
+      historyError.value = (e as Error).message;
   } finally {
     if (version === historyVersion) historyBusy.value = false;
   }
@@ -45,6 +67,7 @@ async function load(more = false) {
   const version = ++loadVersion;
   try {
     if (props.page === "trash") {
+      storage.value = await api("/api/storage");
       const data = await api(
         `/api/library?module=all&trash=1${more ? "&after=" + next.value + "&snapshot=" + snapshot.value : ""}`,
       );
@@ -78,6 +101,60 @@ async function restore(id: string) {
     busy.value = false;
   }
 }
+async function purge(id: string) {
+  if (
+    !(await confirmation.value?.ask(
+      "彻底删除这项资料？",
+      "将删除当前资料库中的原件、预览和修订，无法从回收站恢复。历史备份中的副本仍按备份规则保留。",
+    ))
+  )
+    return;
+  busy.value = true;
+  try {
+    await api(`/api/items/${id}/purge`, { method: "POST" });
+    await load();
+    changed();
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    busy.value = false;
+  }
+}
+async function previewRetention() {
+  busy.value = true;
+  try {
+    retentionPlan.value = await api(
+      `/api/backup/retention?target=${target.value}`,
+    );
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    busy.value = false;
+  }
+}
+async function cleanRetention() {
+  if (
+    !retentionPlan.value ||
+    !(await confirmation.value?.ask(
+      "清理历史备份？",
+      `将永久删除预览中的 ${retentionPlan.value.remove.length} 个恢复点，保留 ${retentionPlan.value.keep.length} 个。此操作不能撤销，当前资料不受影响。`,
+    ))
+  )
+    return;
+  busy.value = true;
+  try {
+    await api(`/api/backup/retention?target=${target.value}`, {
+      method: "POST",
+      body: JSON.stringify({ token: retentionPlan.value.token }),
+    });
+    retentionPlan.value = undefined;
+    await load();
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    busy.value = false;
+  }
+}
 async function start() {
   busy.value = true;
   error.value = "";
@@ -97,7 +174,13 @@ watch([() => props.page, target], () => {
   clearTimeout(timer);
   error.value = "";
   backup.value = undefined;
-  historyVersion++; history.value = []; historyLoaded.value = false; historyBusy.value = false; historyError.value = ""; historyNext.value = "";
+  retentionPlan.value = undefined;
+  historyVersion++;
+  history.value = [];
+  historyLoaded.value = false;
+  historyBusy.value = false;
+  historyError.value = "";
+  historyNext.value = "";
   void load();
 });
 onMounted(() => load());
@@ -107,6 +190,7 @@ onUnmounted(() => {
 });
 </script>
 <template>
+  <ActionConfirm ref="confirmation" />
   <section class="page-heading">
     <div>
       <h1>{{ page === "trash" ? "回收站" : "备份中心" }}</h1>
@@ -131,6 +215,11 @@ onUnmounted(() => {
   </div>
   <p v-if="error" class="notice warning" role="alert">{{ error }}</p>
   <template v-if="page === 'trash'">
+    <p v-if="storage" class="subtle-copy">
+      资料文件占用 {{ fileSize(storage.usage.bytes) }} · 磁盘可用
+      {{ fileSize(storage.usage.free) }}
+    </p>
+    <p v-if="storage?.error" class="notice warning">{{ storage.error }}</p>
     <div v-if="items.length" class="trash-list panel">
       <div v-for="item in items" :key="item.id" class="trash-row">
         <span class="module-icon"
@@ -161,7 +250,13 @@ onUnmounted(() => {
           :disabled="busy"
           @click="restore(item.id)"
         >
-          <Icon name="refresh" />恢复
+          <Icon name="refresh" />恢复</button
+        ><button
+          class="button small secondary"
+          :disabled="busy"
+          @click="purge(item.id)"
+        >
+          彻底删除
         </button>
       </div>
     </div>
@@ -176,7 +271,11 @@ onUnmounted(() => {
       加载更多
     </button>
     <p class="page-footnote">
-      当前开发版暂不自动清空，也不永久删除原件。历史备份中的副本独立保留。
+      {{
+        storage?.trashDays
+          ? `保留 ${storage.trashDays} 天后自动彻底删除；私密回收站在解锁后清理。`
+          : "自动清理未开启，可在本机程序中设置保留天数。"
+      }}历史备份中的副本独立保留。
     </p>
   </template>
   <template v-else-if="backup">
@@ -189,7 +288,7 @@ onUnmounted(() => {
         <h2>
           {{
             backup.running
-              ? "正在保存备份"
+              ? "正在处理备份"
               : !backup.configured
                 ? "未配置备份"
                 : backup.last?.status === "passed"
@@ -216,7 +315,7 @@ onUnmounted(() => {
         :disabled="!backup.configured || backup.busy || busy"
         @click="start"
       >
-        <Icon name="shield" />{{ backup.running ? "备份中…" : "立即备份" }}
+        <Icon name="shield" />{{ backup.running ? "处理中…" : "立即备份" }}
       </button>
     </section>
     <p v-if="backup.busy && !backup.running" class="page-footnote">
@@ -263,26 +362,112 @@ onUnmounted(() => {
         在本机程序中选择“从备份恢复”，恢复到新目录并校验。结果保存在恢复目录中；私密内容仍需使用保险库口令解锁确认。
       </dd>
     </dl>
-    <section v-if="backup.configured" class="backup-history panel" aria-label="历史备份">
+    <section
+      v-if="backup.configured"
+      class="backup-history panel"
+      aria-label="历史备份"
+    >
       <div class="backup-history-heading">
-        <h2>历史备份<span v-if="historyLoaded">{{ historyTotal }}</span></h2>
-        <button class="button small secondary" :disabled="historyBusy" @click="loadHistory()">
-          <Icon name="refresh" />{{ historyBusy ? "读取中…" : historyLoaded ? "刷新" : "查看历史" }}
+        <h2>
+          历史备份<span v-if="historyLoaded">{{ historyTotal }}</span>
+        </h2>
+        <button
+          class="button small secondary"
+          :disabled="historyBusy"
+          @click="loadHistory()"
+        >
+          <Icon name="refresh" />{{
+            historyBusy ? "读取中…" : historyLoaded ? "刷新" : "查看历史"
+          }}
         </button>
       </div>
-      <p v-if="historyError" class="notice warning" role="alert">{{ historyError }}</p>
+      <p v-if="historyError" class="notice warning" role="alert">
+        {{ historyError }}
+      </p>
       <template v-if="historyLoaded">
         <ol v-if="history.length" class="backup-snapshots">
           <li v-for="entry in history" :key="entry.id">
-            <div class="snapshot-summary"><time :datetime="entry.time">{{ date(entry.time) }}</time><span v-if="entry.bytes != null">{{ fileSize(entry.bytes) }}<template v-if="entry.files != null"> · {{ entry.files }} 个备份文件</template></span></div>
+            <div class="snapshot-summary">
+              <time :datetime="entry.time">{{ date(entry.time) }}</time
+              ><span v-if="entry.bytes != null"
+                >{{ fileSize(entry.bytes)
+                }}<template v-if="entry.files != null">
+                  · {{ entry.files }} 个备份文件</template
+                ></span
+              >
+            </div>
             <code>{{ entry.id }}</code>
-            <span v-if="entry.id === backup.last?.snapshot && backup.last?.readVerified" class="snapshot-check">已通过完整读取检查</span>
+            <span
+              v-if="
+                entry.id === backup.last?.snapshot && backup.last?.readVerified
+              "
+              class="snapshot-check"
+              >已通过完整读取检查</span
+            >
           </li>
         </ol>
         <p v-else class="subtle-copy">这个目标还没有资料库快照。</p>
-        <button v-if="historyNext" class="button small secondary" :disabled="historyBusy" @click="loadHistory(true)">加载更多</button>
+        <button
+          v-if="historyNext"
+          class="button small secondary"
+          :disabled="historyBusy"
+          @click="loadHistory(true)"
+        >
+          加载更多
+        </button>
       </template>
-      <p class="backup-history-note">在本机程序中选择恢复点。文件数量包含索引与预览，不等于资料条目数；列出快照不代表已通过恢复验证。</p>
+      <p class="backup-history-note">
+        在本机程序中选择恢复点。文件数量包含索引与预览，不等于资料条目数；列出快照不代表已通过恢复验证。
+      </p>
+    </section>
+    <section v-if="backup.configured" class="panel backup-history">
+      <div class="backup-history-heading">
+        <h2>保留策略</h2>
+        <button
+          v-if="backup.retention?.enabled"
+          class="button small secondary"
+          :disabled="busy || backup.busy"
+          @click="previewRetention"
+        >
+          预览清理
+        </button>
+      </div>
+      <p class="subtle-copy">
+        {{
+          backup.retention?.enabled
+            ? `保留最近 ${backup.retention.daily} 个每日版本及 ${backup.retention.monthly} 个月度版本（UTC），至少保留最新快照；新备份校验成功后自动执行。`
+            : "保留全部历史快照。可在本机程序中启用保留策略。"
+        }}
+      </p>
+      <div v-if="retentionPlan">
+        <p>
+          保留 {{ retentionPlan.keep.length }} 个 · 可清理
+          {{ retentionPlan.remove.length }} 个
+        </p>
+        <details v-if="retentionPlan.remove.length">
+          <summary>查看将删除的恢复点</summary>
+          <ol class="backup-snapshots">
+            <li v-for="entry in retentionPlan.remove" :key="entry.id">
+              <time>{{ date(entry.time) }}</time
+              ><code>{{ entry.id }}</code>
+            </li>
+          </ol>
+        </details>
+        <button
+          v-if="retentionPlan.remove.length"
+          class="button secondary"
+          :disabled="busy || backup.busy"
+          @click="cleanRetention"
+        >
+          执行本次清理
+        </button>
+      </div>
+      <p v-if="backup.last?.cleanupAt" class="subtle-copy">
+        最近清理：{{ date(backup.last.cleanupAt) }}
+      </p>
+      <p v-if="backup.last?.cleanupError" class="notice warning">
+        {{ backup.last.cleanupError }}
+      </p>
     </section>
     <p v-if="backup.last?.error" class="notice warning">
       {{ backup.last.error }}

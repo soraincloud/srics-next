@@ -1,4 +1,6 @@
 import { ref } from "vue";
+import { sendTransfer, transferID } from "./transfers";
+export const uploadProgress = ref("");
 import { api, changed, jsonBody } from "./api";
 export type Upload = {
   id: string;
@@ -61,20 +63,21 @@ export async function runUpload(id: string) {
   try {
     for (let i = 0; i < files.length; i++) {
       const file = files[i]!;
-      const bytes = await file.arrayBuffer();
-      const digest = await crypto.subtle.digest("SHA-256", bytes);
-      const hash = Array.from(new Uint8Array(digest), (b) =>
-        b.toString(16).padStart(2, "0"),
-      ).join("");
-      if (controller.signal.aborted)
-        throw new DOMException("暂停", "AbortError");
+      const task = uploads.value.find((t) => t.id === id)!;
       replace(
-        await api<Upload>(`/api/uploads/${id}/files/${i}`, {
-          method: "PUT",
-          body: file,
-          headers: { "X-File-SHA256": hash },
-          signal: controller.signal,
-        }),
+        await sendTransfer(
+          file,
+          {
+            id: await transferID(id, i),
+            module: task.module,
+            parent: id,
+            index: i,
+          },
+          api,
+          controller.signal,
+          (text) =>
+            (uploadProgress.value = `${i + 1}/${files.length} · ${text}`),
+        ),
       );
     }
     await api(`/api/uploads/${id}/finish`, {
@@ -87,7 +90,7 @@ export async function runUpload(id: string) {
   } catch (e) {
     uploadError.value =
       (e as Error).name === "AbortError"
-        ? "上传已暂停。点击继续可重试；关闭页面后需重新选择原文件。"
+        ? "上传已暂停。点击继续可重试；重新选择原文件可从已保存的分块继续。"
         : (e as Error).message;
     await loadUploads().catch(() => {});
     throw new Error(uploadError.value);

@@ -20,13 +20,17 @@ import (
 )
 
 type localConfig struct {
-	Data               string      `json:"data"`
-	Port               int         `json:"port"`
-	LANAddress         string      `json:"lanAddress"`
-	BackupRepository   string      `json:"backupRepository"`
-	BackupPasswordFile string      `json:"backupPasswordFile"`
-	BackupDailyAt      string      `json:"backupDailyAt"`
-	Cloud              cloudConfig `json:"cloud"`
+	TrashDays          int              `json:"trashDays"`
+	Retention          backup.Retention `json:"retention"`
+	AutoStart          bool             `json:"autoStart"`
+	AutoRestart        bool             `json:"autoRestart"`
+	Data               string           `json:"data"`
+	Port               int              `json:"port"`
+	LANAddress         string           `json:"lanAddress"`
+	BackupRepository   string           `json:"backupRepository"`
+	BackupPasswordFile string           `json:"backupPasswordFile"`
+	BackupDailyAt      string           `json:"backupDailyAt"`
+	Cloud              cloudConfig      `json:"cloud"`
 }
 type configureRequest struct {
 	Config               localConfig `json:"config"`
@@ -73,6 +77,12 @@ func (c localConfig) url() string {
 }
 func tlsDirectory(configPath string) string { return filepath.Join(filepath.Dir(configPath), "https") }
 func (c localConfig) validate() error {
+	if c.TrashDays < 0 || c.TrashDays > 3650 {
+		return errors.New("回收站保留应为 0（手动）或 1–3650 天")
+	}
+	if err := c.Retention.Validate(); err != nil {
+		return err
+	}
 	if !filepath.IsAbs(c.Data) || filepath.Clean(c.Data) == "/" {
 		return errors.New("请选择资料目录的绝对路径")
 	}

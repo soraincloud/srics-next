@@ -15,7 +15,12 @@ struct CloudConfig: Codable, Equatable, Sendable {
     var credentialsFile = ""
     var passwordFile = ""
 }
+struct RetentionConfig: Codable, Equatable, Sendable { var enabled = false; var daily = 0; var monthly = 0 }
 struct LocalConfig: Codable, Equatable, Sendable {
+    var autoStart = false
+    var autoRestart = false
+    var trashDays = 0
+    var retention = RetentionConfig()
     var data = ""
     var port = 19473
     var lanAddress = ""
@@ -25,6 +30,8 @@ struct LocalConfig: Codable, Equatable, Sendable {
     var cloud = CloudConfig()
 }
 struct ServiceStatus: Codable, Sendable {
+    var version: String
+    var updateBackup: String
     var config: LocalConfig
     var saved: Bool
     var running: Bool
@@ -105,6 +112,8 @@ func runManager(_ action: String, payload: Data? = nil) throws -> ServiceStatus 
             busy = false
         }
     }
+    private var updateProcess: RecoveryProcess?
+    func cancelUpdate() { updateProcess?.cancel() }
     func perform(_ action: String, startAfter: Bool = false) {
         guard !busy else { return }
         var payload: Data?
@@ -116,18 +125,25 @@ func runManager(_ action: String, payload: Data? = nil) throws -> ServiceStatus 
             do { payload = try JSONEncoder().encode(ConfigureRequest(config: config, password: password, currentPassword: currentPassword, vaultPassword: vaultPassword, currentVaultPassword: currentVaultPassword, vaultIdleMinutes: vaultIdleMinutes)) }
             catch { message = "配置无法读取"; failed = true; return }
         }
-        busy = true; failed = false; message = ""
+        busy = true; failed = false; message = action == "prepare-update" ? "正在停止服务、备份并保留旧程序，请等待完成…" : ""
+        if action == "prepare-update" { AppDelegate.recoveryBusy = true }
         let request = payload
+        let updater: RecoveryProcess? = action == "prepare-update" ? RecoveryProcess() : nil
+        updateProcess = updater
         Task {
             do {
-                var result = try await Task.detached { try runManager(action, payload: request) }.value
+                var result = try await Task.detached { if let updater { return try updater.run(action, payload: Data(), as: ServiceStatus.self) }; return try runManager(action, payload: request) }.value
                 status = result; config = result.config; port = String(result.config.port)
                 if action == "configure" { password = ""; repeatedPassword = ""; currentPassword = ""; vaultPassword = ""; repeatedVaultPassword = ""; currentVaultPassword = "" }
                 if startAfter { result = try await Task.detached { try runManager("start") }.value; status = result }
                 message = action == "stop" ? "服务已停止" : result.running ? "服务正在后台运行" : "配置已保存"
+                if action == "prepare-update" { message = "更新备份已校验，旧程序与记录保存在：\(result.updateBackup)。退出本窗口后替换 .app，再打开并启动。"; NSWorkspace.shared.open(URL(fileURLWithPath: result.updateBackup)) }
                 if result.running && (action == "start" || startAfter), let url = URL(string: result.url) { NSWorkspace.shared.open(url) }
-            } catch { message = error.localizedDescription; failed = true }
-            busy = false
+            } catch {
+                message = error.localizedDescription; failed = true
+                if action == "prepare-update" { status = try? await Task.detached { try runManager("info") }.value }
+            }
+            updateProcess = nil; busy = false; if action == "prepare-update" { AppDelegate.recoveryBusy = false }
         }
     }
     func choose(_ field: String) {
@@ -196,6 +212,8 @@ struct LauncherView: View {
                     if !model.config.lanAddress.isEmpty {
                         Text("局域网使用 HTTPS。保存后导出公共证书，在访问设备上安装并信任；建议在路由器中固定此 IP。").font(.caption).foregroundStyle(.secondary)
                     }
+                    Toggle("登录电脑后自动启动", isOn: $model.config.autoStart)
+                    Toggle("异常退出后自动重启", isOn: $model.config.autoRestart)
                     if model.saved { Text("资料目录已固定，迁移与恢复需单独操作。").font(.caption).foregroundStyle(.secondary) }
                 }.disabled(model.busy || model.running)
                 Section(model.passwordSet ? "修改登录密码（可选）" : "登录密码") {
@@ -255,9 +273,25 @@ struct LauncherView: View {
                         LabeledContent("每天执行时间") {
                             TextField("03:00", text: $model.config.backupDailyAt).frame(width: 95).textFieldStyle(.roundedBorder).labelsHidden()
                         }
-                        Text("使用本机时区，依次备份本地和云端。漏跑补做，失败每小时重试，不自动删除历史快照。").font(.caption).foregroundStyle(.secondary)
+                        Text("使用本机时区，依次备份本地和云端。漏跑补做，失败每小时重试。").font(.caption).foregroundStyle(.secondary)
                     }
                 }.disabled(model.busy || model.running)
+                Section("空间管理") {
+                    Toggle("自动清理回收站", isOn: Binding(get: { model.config.trashDays > 0 }, set: { model.config.trashDays = $0 ? 30 : 0 }))
+                    if model.config.trashDays > 0 { Stepper("回收站保留 \(model.config.trashDays) 天", value: $model.config.trashDays, in: 1...3650); Text("到期后永久删除。私密资料在解锁后清理，历史备份独立保留。").font(.caption).foregroundStyle(.secondary) }
+                    Toggle("清理过期历史备份", isOn: Binding(get: { model.config.retention.enabled }, set: { model.config.retention.enabled = $0; if $0 && model.config.retention.daily == 0 { model.config.retention.daily = 30; model.config.retention.monthly = 12 } }))
+                    if model.config.retention.enabled {
+                        Stepper("每日版本：\(model.config.retention.daily)", value: $model.config.retention.daily, in: 1...3650)
+                        Stepper("月度版本：\(model.config.retention.monthly)", value: $model.config.retention.monthly, in: 0...120)
+                        Text("按 UTC 日/月保留最新版本；新备份通过校验后永久删除多余快照。至少保留最新一份。网页可预览清理内容。").font(.caption).foregroundStyle(.secondary)
+                    }
+                }.disabled(model.busy || model.running)
+                Section("版本与更新") {
+                    Text("当前版本：\(model.status?.version ?? "—")").font(.caption)
+                    Button("停止服务并准备更新") { model.perform("prepare-update") }.disabled(model.busy || !model.saved)
+                    if model.busy && AppDelegate.recoveryBusy { Button("取消更新准备") { model.cancelUpdate() } }
+                    Text("先完成加密备份并保留旧程序，再退出、替换 .app 并重新启动；失败时不替换程序。需要已配置的可读备份仓库。").font(.caption).foregroundStyle(.secondary)
+                }
             }.formStyle(.grouped)
             Divider()
             VStack(alignment: .leading, spacing: 12) {
@@ -289,13 +323,13 @@ struct LauncherView: View {
                     if model.busy { ProgressView().controlSize(.small) }
                     if model.running {
                         Button("停止服务") { model.perform("stop") }
-                        Button("打开资料库") { if let url = URL(string: model.status?.url ?? "") { NSWorkspace.shared.open(url) } }.buttonStyle(.borderedProminent).tint(.primary)
+                        Button("打开资料库") { if let url = URL(string: model.status?.url ?? "") { NSWorkspace.shared.open(url) } }.buttonStyle(RecoveryActionStyle())
                     } else {
                         Button("保存配置") { model.perform("configure") }
                         Button(model.saved && !model.changed ? "启动服务" : "保存并启动") {
                             if model.saved && !model.changed { model.perform("start") }
                             else { model.perform("configure", startAfter: true) }
-                        }.buttonStyle(.borderedProminent).tint(.primary)
+                        }.buttonStyle(RecoveryActionStyle())
                     }
                 }.disabled(model.busy || model.status == nil)
                 Text(model.running ? "关闭本窗口后，服务继续运行。修改配置前请先停止服务。" : "启动后在浏览器中管理资料。").font(.caption).foregroundStyle(.secondary)

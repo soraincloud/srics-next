@@ -38,6 +38,10 @@ struct RecoveryRequest: Encodable, Sendable {
     let source: RecoverySource
     var snapshot = ""
     var directory = ""
+    var vaultPassword = ""
+    var itemID = ""
+    var `private` = false
+    var exportDirectory = ""
 }
 struct RecoveryResult: Decodable, Sendable {
     let snapshot: String
@@ -46,6 +50,8 @@ struct RecoveryResult: Decodable, Sendable {
     let vaultPresent: Bool
 }
 struct RecoveryResponse: Decodable, Sendable {
+    var items: [RecoveredItem]?
+    var exported: String?
     var snapshots: [BackupSnapshot]?
     var result: RecoveryResult?
     var activated: Bool
@@ -61,7 +67,7 @@ final class RecoveryProcess: @unchecked Sendable {
         cancelled = true
         if let process, process.isRunning { process.terminate() }
     }
-    func run(_ action: String, payload: Data) throws -> RecoveryResponse {
+    func run<T: Decodable>(_ action: String, payload: Data, as type: T.Type) throws -> T {
         guard let resources = Bundle.main.resourceURL else { throw CommandError(message: "程序包不完整") }
         let p = Process(), input = Pipe(), output = Pipe(), failure = Pipe()
         p.executableURL = resources.appendingPathComponent("bin/srics")
@@ -80,7 +86,7 @@ final class RecoveryProcess: @unchecked Sendable {
         lock.lock(); let wasCancelled = cancelled; lock.unlock()
         if wasCancelled { throw CommandError(message: "任务已取消。已生成的目录会保留，重试请选择新目录。") }
         guard p.terminationStatus == 0 else { throw CommandError(message: String(data: errors, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "恢复操作失败") }
-        return try JSONDecoder().decode(RecoveryResponse.self, from: data)
+        return try JSONDecoder().decode(type, from: data)
     }
 }
 
@@ -89,8 +95,8 @@ final class RecoveryProcess: @unchecked Sendable {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard Self.recoveryBusy else { return .terminateNow }
         let alert = NSAlert()
-        alert.messageText = "备份恢复任务正在进行"
-        alert.informativeText = "请等待完成，或在恢复窗口中取消任务后退出。"
+        alert.messageText = "备份或恢复任务正在进行"
+        alert.informativeText = "请等待完成，或取消当前任务后退出。"
         alert.addButton(withTitle: "继续等待")
         alert.runModal()
         return .terminateCancel
@@ -121,7 +127,7 @@ final class RecoveryProcess: @unchecked Sendable {
             do {
                 let response = try await Task.detached {
                     if action == "recovery-activate" { _ = try runManager("stop") }
-                    return try process.run(action, payload: payload)
+                    return try process.run(action, payload: payload, as: RecoveryResponse.self)
                 }.value
                 if action == "recovery-snapshots" {
                     snapshots = response.snapshots ?? []; snapshot = snapshots.first?.id
@@ -154,6 +160,7 @@ final class RecoveryProcess: @unchecked Sendable {
 struct RecoveryView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var model: RecoveryModel
+    @State private var showExport = false
     let onActivated: () -> Void
     init(config: LocalConfig, onActivated: @escaping () -> Void) {
         _model = StateObject(wrappedValue: RecoveryModel(config: config)); self.onActivated = onActivated
@@ -221,7 +228,7 @@ struct RecoveryView: View {
                     Text("校验记录已保存为 .srics-recovery.json。").font(.caption).foregroundStyle(.secondary)
                     if result.vaultPresent { Text("私密文件保持加密。请使用备份时的保险库口令解锁确认。").font(.callout) }
                     if !model.activated { Text("启用会切换资料目录，保留原资料。启用时会先停止现有服务，之后使用备份时的登录密码。").font(.callout).foregroundStyle(.secondary) }
-                    Button("在 Finder 中查看") { NSWorkspace.shared.open(URL(fileURLWithPath: result.directory)) }
+                    HStack { Button("在 Finder 中查看") { NSWorkspace.shared.open(URL(fileURLWithPath: result.directory)) }; if !model.activated { Button("取回单项文件…") { showExport = true } } }
                     Spacer()
                 }.padding(24)
             }
@@ -240,5 +247,6 @@ struct RecoveryView: View {
                 }
             }.padding(24)
         }.frame(width: 620, height: 680).interactiveDismissDisabled(model.busy)
+        .sheet(isPresented: $showExport) { if let result = model.result { RecoveryExportView(source: model.source, directory: result.directory, hasVault: result.vaultPresent) } }
     }
 }

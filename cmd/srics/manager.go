@@ -27,6 +27,8 @@ import (
 )
 
 type managerStatus struct {
+	Version          string      `json:"version"`
+	UpdateBackup     string      `json:"updateBackup"`
 	Config           localConfig `json:"config"`
 	Saved            bool        `json:"saved"`
 	Running          bool        `json:"running"`
@@ -53,7 +55,7 @@ func serviceLoaded(ctx context.Context, path string) bool {
 }
 func readManagerStatus(ctx context.Context, path string) (managerStatus, error) {
 	c, saved, err := loadConfig(path)
-	s := managerStatus{Config: c, Saved: saved, VaultIdleMinutes: 10, URL: c.url(), Log: filepath.Join(filepath.Dir(path), "service.log"), LANAddresses: []string{}}
+	s := managerStatus{Version: version, Config: c, Saved: saved, VaultIdleMinutes: 10, URL: c.url(), Log: filepath.Join(filepath.Dir(path), "service.log"), LANAddresses: []string{}}
 	if err != nil {
 		return s, err
 	}
@@ -117,17 +119,22 @@ func xmlText(s string) string {
 	return b.String()
 }
 func launchPlist(path, executable string, s managerStatus) string {
+	restart := ""
+	if s.Config.AutoRestart {
+		restart = "<key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict><key>ThrottleInterval</key><integer>30</integer>"
+	}
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>Label</key><string>%s</string>
 <key>ProgramArguments</key><array><string>%s</string><string>serve</string><string>--config</string><string>%s</string></array>
 <key>RunAtLoad</key><true/>
+%s
 <key>ExitTimeOut</key><integer>120</integer>
 <key>Umask</key><integer>63</integer>
 <key>StandardOutPath</key><string>%s</string>
 <key>StandardErrorPath</key><string>%s</string>
-</dict></plist>`, xmlText(serviceLabel(path)), xmlText(executable), xmlText(path), xmlText(s.Log), xmlText(s.Log))
+</dict></plist>`, xmlText(serviceLabel(path)), xmlText(executable), xmlText(path), restart, xmlText(s.Log), xmlText(s.Log))
 }
 func startManaged(ctx context.Context, path string) error {
 	if runtime.GOOS != "darwin" {
@@ -170,6 +177,9 @@ func startManaged(ctx context.Context, path string) error {
 	}
 	exe, err := os.Executable()
 	if err != nil {
+		return err
+	}
+	if err = syncLoginAgent(path, s.Config, exe); err != nil {
 		return err
 	}
 	plist := filepath.Join(filepath.Dir(path), "service.plist")
@@ -233,7 +243,7 @@ func stopManaged(ctx context.Context, path string) error {
 }
 func manager(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: srics manager [info|configure|start|stop|cloud-check|recovery-snapshots|recovery-restore|recovery-inspect|recovery-activate] [--config path]")
+		return errors.New("usage: srics manager [info|configure|start|stop|cloud-check|recovery-snapshots|recovery-restore|recovery-inspect|recovery-activate|recovery-items|recovery-export|prepare-update] [--config path]")
 	}
 	path, err := configPath()
 	if err != nil {
@@ -264,7 +274,20 @@ func manager(ctx context.Context, args []string) error {
 	}
 	switch args[0] {
 	case "info":
-	case "recovery-snapshots", "recovery-restore", "recovery-activate", "recovery-inspect":
+	case "prepare-update":
+		updateCtx, cancel := context.WithTimeout(ctx, 24*time.Hour)
+		defer cancel()
+		dir, e := prepareUpdate(updateCtx, path)
+		if e != nil {
+			return e
+		}
+		status, e := readManagerStatus(ctx, path)
+		if e != nil {
+			return e
+		}
+		status.UpdateBackup = dir
+		return json.NewEncoder(os.Stdout).Encode(status)
+	case "recovery-snapshots", "recovery-restore", "recovery-activate", "recovery-inspect", "recovery-items", "recovery-export":
 		return recoveryManager(ctx, args[0], path, verification.ResolveTools().Restic, os.Stdin)
 	case "cloud-check":
 		var request struct {
@@ -309,6 +332,13 @@ func manager(ctx context.Context, args []string) error {
 		}
 		if err := applyConfig(path, req); err != nil {
 			return err
+		}
+		exe, e := os.Executable()
+		if e != nil {
+			return e
+		}
+		if e = syncLoginAgent(path, req.Config, exe); e != nil {
+			return e
 		}
 	case "start":
 		if err := startManaged(ctx, path); err != nil {

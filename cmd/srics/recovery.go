@@ -29,9 +29,13 @@ type recoverySource struct {
 	Cloud        cloudConfig `json:"cloud"`
 }
 type recoveryRequest struct {
-	Source    recoverySource `json:"source"`
-	Snapshot  string         `json:"snapshot"`
-	Directory string         `json:"directory"`
+	VaultPassword   string         `json:"vaultPassword"`
+	ItemID          string         `json:"itemID"`
+	Private         bool           `json:"private"`
+	ExportDirectory string         `json:"exportDirectory"`
+	Source          recoverySource `json:"source"`
+	Snapshot        string         `json:"snapshot"`
+	Directory       string         `json:"directory"`
 }
 type recoveryResult struct {
 	Version      int       `json:"version"`
@@ -42,6 +46,8 @@ type recoveryResult struct {
 	VaultPresent bool      `json:"vaultPresent"`
 }
 type recoveryResponse struct {
+	Items     []recoveryItem    `json:"items,omitempty"`
+	Exported  string            `json:"exported,omitempty"`
 	Snapshots []backup.Snapshot `json:"snapshots,omitempty"`
 	Result    *recoveryResult   `json:"result,omitempty"`
 	Activated bool              `json:"activated"`
@@ -224,7 +230,9 @@ func recoveryManager(ctx context.Context, action, path, binary string, input io.
 	}
 	var response recoveryResponse
 	var err error
-	if action == "recovery-activate" {
+	if action == "recovery-items" || action == "recovery-export" {
+		response, err = recoveryExportRequest(ctx, path, request)
+	} else if action == "recovery-activate" {
 		response.Result, err = activateRecovery(ctx, path, request.Directory)
 		response.Activated = err == nil
 	} else if action == "recovery-inspect" {

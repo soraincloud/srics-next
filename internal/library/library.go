@@ -33,13 +33,15 @@ var ErrConflict = errors.New("资料已变化，请刷新后重试")
 var ErrMissing = errors.New("找不到这项资料")
 
 type Library struct {
-	Root      string
-	db        *sql.DB
-	mu        sync.Mutex
-	marker    []byte
-	inode     os.FileInfo
-	lock      *os.File
-	FreeSpace func(string) (uint64, error)
+	Root       string
+	db         *sql.DB
+	mu         sync.Mutex
+	transferMu sync.Mutex
+	objectsMu  sync.RWMutex
+	marker     []byte
+	inode      os.FileInfo
+	lock       *os.File
+	FreeSpace  func(string) (uint64, error)
 }
 type Item struct {
 	ID       string   `json:"id"`
@@ -162,7 +164,7 @@ func Open(root string) (*Library, error) {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version > 3 {
+	if version > 4 {
 		return fail(errors.New("数据版本较新，请升级程序后打开"))
 	}
 	if version == 0 {
@@ -193,6 +195,14 @@ PRAGMA user_version=1;`)
 			return fail(err)
 		}
 	}
+	if version < 4 {
+		if err = migrateTransfers(db, root, version > 0); err != nil {
+			return fail(err)
+		}
+	}
+	if info, err := os.Lstat(filepath.Join(root, "chunks")); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return fail(errors.New("上传分块目录缺失或无效"))
+	}
 	info, e := os.Lstat(filepath.Join(root, "private-objects"))
 	if e != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return fail(errors.New("私密资料目录缺失或无效"))
@@ -208,7 +218,7 @@ PRAGMA user_version=1;`)
 	}
 	// Only abandoned atomic writes are removed. Published immutable objects are
 	// never collected here: completed uploads and backup snapshots may refer to them.
-	for _, dir := range []string{"objects", "staging", "private-objects"} {
+	for _, dir := range []string{"objects", "staging", "private-objects", "chunks"} {
 		matches, _ := filepath.Glob(filepath.Join(root, dir, ".pending-*"))
 		for _, p := range matches {
 			os.Remove(p)
@@ -435,15 +445,10 @@ func (l *Library) Progress(id string, page int) error {
 }
 
 // Snapshot copies SQLite under the mutation lock, then pins immutable file
-// versions with hard links. No object GC runs in this release.
+// versions with hard links. Object GC is serialized until all references are pinned.
 func (l *Library) Snapshot(ctx context.Context, dest string) error {
 	l.mu.Lock()
-	locked := true
-	defer func() {
-		if locked {
-			l.mu.Unlock()
-		}
-	}()
+	defer l.mu.Unlock()
 	if err := l.NeedSpace(32 << 20); err != nil {
 		return err
 	}
@@ -462,7 +467,7 @@ func (l *Library) Snapshot(ctx context.Context, dest string) error {
 	if err := os.Chmod(filepath.Join(dest, "index.db"), 0600); err != nil {
 		return err
 	}
-	for _, name := range []string{"objects", "staging", "private-objects"} {
+	for _, name := range []string{"objects", "staging", "private-objects", "chunks"} {
 		if err := os.Mkdir(filepath.Join(dest, name), 0700); err != nil {
 			return err
 		}
@@ -493,6 +498,9 @@ func (l *Library) Snapshot(ctx context.Context, dest string) error {
 		return err
 	}
 	for _, up := range uploads {
+		if up.State == "cancelled" {
+			continue
+		}
 		for _, f := range up.Files {
 			if f.Page != nil {
 				ids[f.Page.Object] = true
@@ -506,8 +514,7 @@ func (l *Library) Snapshot(ctx context.Context, dest string) error {
 	if err != nil {
 		return err
 	}
-	l.mu.Unlock()
-	locked = false
+	// Keep references protected until every immutable object is pinned.
 	for _, row := range private {
 		for _, id := range []string{row.object, row.thumb} {
 			if id == "" {
@@ -534,6 +541,26 @@ func (l *Library) Snapshot(ctx context.Context, dest string) error {
 		if err = os.Link(l.ObjectPath(id), filepath.Join(dest, "objects", id)); err != nil {
 			return err
 		}
+	}
+	rows, err := l.db.Query("SELECT object FROM transfer_chunks")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			return err
+		}
+		if !IDPattern.MatchString(id) {
+			return errors.New("无效分块引用")
+		}
+		if err = os.Link(filepath.Join(l.Root, "chunks", id), filepath.Join(dest, "chunks", id)); err != nil {
+			return err
+		}
+	}
+	if err = rows.Err(); err != nil {
+		return err
 	}
 	ok = true
 	return nil
@@ -579,6 +606,9 @@ func (l *Library) Verify(ctx context.Context) error {
 		return err
 	}
 	for _, up := range uploads {
+		if up.State == "cancelled" {
+			continue
+		}
 		for _, f := range up.Files {
 			if f.Page != nil {
 				pages[f.Page.Object] = *f.Page
@@ -604,6 +634,9 @@ func (l *Library) Verify(ctx context.Context) error {
 				return e
 			}
 		}
+	}
+	if err := l.verifyChunks(ctx); err != nil {
+		return err
 	}
 	return l.verifyPrivate(ctx)
 }

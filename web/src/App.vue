@@ -134,7 +134,7 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
       </div>
     </header>
     <aside class="sidebar">
-      <div class="workspace-identity"><span class="workspace-avatar">S</span><div><strong>我的空间</strong><span>本机资料库 <span class="version-label">DEV</span></span></div></div>
+      <div class="workspace-identity"><span class="workspace-avatar">S</span><div><strong>我的空间</strong><span>本机资料库 <span class="version-label">RC1</span></span></div></div>
       <nav class="sidebar-nav" aria-label="主导航">
         <a href="#/" class="nav-item" :aria-current="page === 'library' ? 'page' : undefined">
           <Icon name="library" /><span>资料库</span>
@@ -158,9 +158,9 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
           <span v-if="busy" class="nav-activity" aria-label="验证进行中"></span>
         </a>
         <a href="#/about" class="nav-item" :aria-current="page === 'about' ? 'page' : undefined">
-          <Icon name="info" /><span>关于此版本</span><span class="version-label">DEV</span>
+          <Icon name="info" /><span>关于此版本</span><span class="version-label">RC1</span>
         </a>
-        <div class="local-note"><Icon name="computer" /><span>本机开发版</span></div>
+        <div class="local-note"><Icon name="computer" /><span>0.3.0 · 验收版</span></div>
       </div>
     </aside>
 
@@ -289,13 +289,13 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
         </template>
 
         <template v-else-if="page === 'about'">
-          <section class="page-heading"><div><h1>关于此版本</h1></div><span class="quiet-badge">DEV</span></section>
+          <section class="page-heading"><div><h1>关于此版本</h1></div><span class="quiet-badge">RC1</span></section>
           <section class="about-intro panel">
             <span class="brand-mark"><Icon name="library" /></span>
             <div><h2>SRICS Next</h2><p>当前可以导入漫画、浏览图片、保存照片原件，以及从回收站恢复内容。登录、可重试上传和本地加密备份已接入；小说编辑与阅读、私密照片和个人文件也已接入。</p></div>
           </section>
           <section aria-labelledby="roadmap-heading">
-            <div class="section-heading"><h2 id="roadmap-heading">开发计划</h2><span>当前阶段 M5</span></div>
+            <div class="section-heading"><h2 id="roadmap-heading">开发计划</h2><span>功能收尾 · 待验收</span></div>
             <ol class="roadmap panel">
               <li v-for="stage in stages" :key="stage.id" :class="{ current: stage.id === 'M5' }">
                 <span class="stage-number">{{ stage.id }}</span><div><h3>{{ stage.name }}</h3><p>{{ stage.detail }}</p></div><span class="stage-state">{{ stage.state }}</span>

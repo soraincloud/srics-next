@@ -15,6 +15,8 @@ import (
 )
 
 type backupRecord struct {
+	CleanupAt    string `json:"cleanupAt,omitempty"`
+	CleanupError string `json:"cleanupError,omitempty"`
 	Repository   string `json:"repository,omitempty"`
 	Initialized  bool   `json:"initialized,omitempty"`
 	Status       string `json:"status"`
@@ -155,7 +157,7 @@ func (a *LibraryAPI) backupStatus(target ...string) (any, error) {
 		record.Status, record.Error = "failed", "上次备份因服务停止而中断，尚未确认成功"
 	}
 	zone, _ := time.Now().Zone()
-	return map[string]any{"target": name, "destination": client.Repository, "configured": client.Repository != "", "running": a.backupActive && a.backupActiveTarget == name, "busy": a.backupActive, "last": record, "dailyAt": a.backupDailyAt, "timeZone": zone, "nextRunAt": next}, nil
+	return map[string]any{"target": name, "destination": client.Repository, "configured": client.Repository != "", "running": a.backupActive && a.backupActiveTarget == name, "busy": a.backupActive, "last": record, "dailyAt": a.backupDailyAt, "timeZone": zone, "nextRunAt": next, "retention": a.retention}, nil
 }
 
 func (a *LibraryAPI) startBackup(target ...string) error {
@@ -191,7 +193,7 @@ func (a *LibraryAPI) startBackup(target ...string) error {
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
-		ctx, cancel := context.WithTimeout(a.ctx, 2*time.Hour)
+		ctx, cancel := context.WithTimeout(a.ctx, 24*time.Hour)
 		defer cancel()
 		stage := filepath.Join(a.store.Root, "staging", "backup-"+library.NewID())
 		defer os.RemoveAll(stage)
@@ -250,6 +252,23 @@ func (a *LibraryAPI) startBackup(target ...string) error {
 			record.Status, record.Error = "failed", "备份未完成，请检查目标连接、权限、口令文件及资料盘"
 		} else {
 			record.Snapshot, record.SavedAt, record.VerifiedAt, record.ReadVerified = id, record.AttemptedAt, record.FinishedAt, true
+		}
+		if err == nil && a.retention.Enabled {
+			// Persist the new successful restore point before any retention deletion.
+			if e := a.saveBackupRecord(record, target...); e != nil {
+				record.CleanupError = "备份结果写入失败，跳过清理"
+			} else {
+				plan, e := client.PlanRetention(ctx, a.retention)
+				if e == nil {
+					e = client.ApplyRetention(ctx, a.retention, plan.Token)
+				}
+				if e != nil {
+					record.CleanupError = "备份已完成，但历史清理失败，请检查目标后重试"
+				} else {
+					record.CleanupError = ""
+					record.CleanupAt = time.Now().UTC().Format(time.RFC3339Nano)
+				}
+			}
 		}
 		a.backupHistoryMu.Lock()
 		delete(a.backupHistories, name)
