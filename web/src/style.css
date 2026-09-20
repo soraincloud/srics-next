@@ -616,3 +616,15 @@ dialog::backdrop { background: rgba(0,0,0,.65); backdrop-filter: blur(6px); }
 .private-viewer,.private-editor{color:var(--text);background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:0;max-height:90vh}.private-viewer{width:min(1000px,92vw)}.private-viewer::backdrop,.private-editor::backdrop{background:rgba(0,0,0,.72)}.private-viewer-toolbar{display:flex;align-items:center;gap:12px;padding:12px 18px}.private-viewer-error{padding:0 18px 14px}.private-viewer-toolbar>span{margin-right:auto;font-size:14px}.private-viewer .private-image{min-height:300px}.private-viewer .private-image img{width:100%;height:auto;max-height:78vh;object-fit:contain}.private-editor{width:min(440px,calc(100vw - 40px));padding:26px;box-sizing:border-box}.private-editor form{display:grid;gap:14px}.private-editor h2{margin:0 0 8px;font-size:20px}.private-editor-actions{justify-content:flex-end;margin-top:10px}
 @media(max-width:1100px){.private-gallery{grid-template-columns:repeat(3,minmax(0,1fr))}.private-random{columns:3}}
 @media(max-width:680px){.vault-gate{margin:25px auto;padding:28px 22px}.private-gallery{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.private-random{columns:2;column-gap:12px}.private-random .private-photo-card{margin-bottom:12px}.private-image img{height:180px}.private-file-row{padding:15px 12px;gap:10px;flex-wrap:wrap}.private-file-actions{margin-left:auto}.private-toolbar{gap:12px}.private-toolbar .view-switch button{padding:8px 10px}.private-upload-row{flex-direction:column;gap:4px}.private-upload-row small{max-width:100%}.private-heading-actions .quiet-badge{display:none}}
+
+.backup-history { margin-top: 22px; padding: 28px; }
+.backup-history-heading,.snapshot-summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.backup-history h2 { font-size: 18px; }
+.backup-history h2 span { margin-left: 10px; font-size: 12px; color: var(--secondary); font-weight: 400; }
+.backup-snapshots { list-style: none; padding: 0; margin: 22px 0; }
+.backup-snapshots li { padding: 18px 0; border-top: 1px solid var(--line); }
+.snapshot-summary { font-size: 13px; gap: 8px 16px; }
+.snapshot-summary span { font-size: 11px; color: var(--secondary); }
+.backup-snapshots code { display: block; font-size: 11px; overflow-wrap: anywhere; color: var(--secondary); margin-top: 10px; user-select: all; }
+.snapshot-check { display: inline-block; margin-top: 10px; font-size: 11px; color: var(--green); }
+.backup-history-note { margin: 20px 0 0; font-size: 12px; line-height: 1.8; color: var(--secondary); }

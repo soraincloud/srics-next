@@ -49,6 +49,8 @@ type LibraryAPI struct {
 	backupDailyAt      string
 	backupStateErrors  map[string]error
 	backupActiveTarget string
+	backupHistoryMu    sync.Mutex
+	backupHistories    map[string]snapshotCache
 	wg                 sync.WaitGroup
 }
 
@@ -306,6 +308,13 @@ func (a *LibraryAPI) handle(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/api/download" && r.Method == "GET":
 		a.downloadBatch(w, r)
 		return
+	case r.URL.Path == "/api/backup/snapshots" && r.Method == "GET":
+		target := r.URL.Query().Get("target")
+		if target != "local" && target != "cloud" {
+			apiError(w, 400, errors.New("无效备份目标"))
+			return
+		}
+		result, err = a.backupHistory(r.Context(), target, r.URL.Query().Get("after"))
 	case r.URL.Path == "/api/backup" && r.Method == "GET":
 		target := r.URL.Query().Get("target")
 		if target != "" && target != "local" && target != "cloud" {

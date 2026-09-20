@@ -163,6 +163,7 @@ func runManager(_ action: String, payload: Data? = nil) throws -> ServiceStatus 
 
 struct LauncherView: View {
     @StateObject private var model = Launcher()
+    @State private var showRecovery = false
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
@@ -283,6 +284,7 @@ struct LauncherView: View {
                     if let log = model.status?.log {
                         Button("运行日志") { NSWorkspace.shared.open(URL(fileURLWithPath: log)) }.buttonStyle(.link)
                     }
+                    Button("从备份恢复…") { showRecovery = true }
                     Spacer()
                     if model.busy { ProgressView().controlSize(.small) }
                     if model.running {
@@ -299,9 +301,11 @@ struct LauncherView: View {
                 Text(model.running ? "关闭本窗口后，服务继续运行。修改配置前请先停止服务。" : "启动后在浏览器中管理资料。").font(.caption).foregroundStyle(.secondary)
             }.padding(20)
         }.frame(width: 650, height: 800).task { model.refresh() }
+        .sheet(isPresented: $showRecovery) { RecoveryView(config: model.config) { model.status = nil; model.refresh() } }
     }
 }
 @main struct SRICSLauncherApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     var body: some Scene {
         Window("SRICS Next", id: "main") { LauncherView() }
             .windowResizability(.contentSize)

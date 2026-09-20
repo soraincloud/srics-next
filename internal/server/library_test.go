@@ -66,7 +66,7 @@ func TestLibraryHTTPAuthenticationAndFlow(t *testing.T) {
 		}
 		return res.StatusCode, b
 	}
-	for _, path := range []string{"/api/library?module=images", "/api/uploads", "/api/backup", "/api/items/00000000000000000000000000000000/download", "/api/status"} {
+	for _, path := range []string{"/api/library?module=images", "/api/uploads", "/api/backup", "/api/backup/snapshots?target=local", "/api/items/00000000000000000000000000000000/download", "/api/status"} {
 		if code, _ := call("GET", path, nil, nil); code != 401 {
 			t.Fatal("unauthenticated route", path, code)
 		}

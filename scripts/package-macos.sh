@@ -6,7 +6,7 @@ if [[ "${1:-}" != --skip-build ]]; then ./scripts/build.sh; fi
 app="$PWD/dist/SRICS Next.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/bin/tools" "$app/Contents/Resources/licenses"
 cp bin/srics "$app/Contents/Resources/bin/srics"
-swiftc -O -parse-as-library -target "$(uname -m)-apple-macosx13.0" desktop/SRICSLauncher.swift -o "$app/Contents/MacOS/SRICS Next"
+swiftc -O -parse-as-library -target "$(uname -m)-apple-macosx13.0" desktop/*.swift -o "$app/Contents/MacOS/SRICS Next"
 cat > "$app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

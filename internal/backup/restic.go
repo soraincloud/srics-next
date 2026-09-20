@@ -23,6 +23,9 @@ type Client struct {
 var snapshotID = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 func (c Client) run(ctx context.Context, dir string, args ...string) ([]byte, error) {
+	return c.runLimited(ctx, dir, 0, args...)
+}
+func (c Client) runLimited(ctx context.Context, dir string, limit int, args ...string) ([]byte, error) {
 	if len(c.Password) < 12 {
 		return nil, errors.New("备份口令至少需要 12 字节")
 	}
@@ -59,6 +62,9 @@ func (c Client) run(ctx context.Context, dir string, args ...string) ([]byte, er
 	}
 	var output bytes.Buffer
 	cmd.Stdout = &output
+	if limit > 0 {
+		cmd.Stdout = &limitedOutput{buffer: &output, remaining: limit}
+	}
 	// Do not forward restic stderr or command environment into reports/logs.
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("restic %s failed: %w", args[0], err)

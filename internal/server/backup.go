@@ -251,6 +251,9 @@ func (a *LibraryAPI) startBackup(target ...string) error {
 		} else {
 			record.Snapshot, record.SavedAt, record.VerifiedAt, record.ReadVerified = id, record.AttemptedAt, record.FinishedAt, true
 		}
+		a.backupHistoryMu.Lock()
+		delete(a.backupHistories, name)
+		a.backupHistoryMu.Unlock()
 		a.backupMu.Lock()
 		defer a.backupMu.Unlock()
 		if err := a.saveBackupRecord(record, target...); err != nil {
@@ -259,4 +262,55 @@ func (a *LibraryAPI) startBackup(target ...string) error {
 		a.backupActive = false
 	}()
 	return nil
+}
+
+// Lists are loaded on demand and briefly cached, never polled alongside status.
+type snapshotCache struct {
+	snapshots []backup.Snapshot
+	until     time.Time
+}
+
+func (a *LibraryAPI) backupHistory(ctx context.Context, target, after string) (any, error) {
+	if !a.backupHistoryMu.TryLock() {
+		return nil, library.ErrConflict
+	}
+	defer a.backupHistoryMu.Unlock()
+	client := a.backupClient(target)
+	if client.Repository == "" {
+		return nil, errors.New("请先在本机程序中配置此备份目标")
+	}
+	cache := a.backupHistories[target]
+	if !time.Now().Before(cache.until) {
+		ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+		defer cancel()
+		snapshots, err := client.LibrarySnapshots(ctx)
+		if err != nil {
+			return nil, err
+		}
+		cache = snapshotCache{snapshots: snapshots, until: time.Now().Add(30 * time.Second)}
+		if a.backupHistories == nil {
+			a.backupHistories = map[string]snapshotCache{}
+		}
+		a.backupHistories[target] = cache
+	}
+	start := 0
+	if after != "" {
+		found := false
+		for i, s := range cache.snapshots {
+			if s.ID == after {
+				start = i + 1
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, errors.New("历史记录已变化，请重新加载")
+		}
+	}
+	end := min(start+50, len(cache.snapshots))
+	next := ""
+	if end < len(cache.snapshots) {
+		next = cache.snapshots[end-1].ID
+	}
+	return map[string]any{"snapshots": cache.snapshots[start:end], "next": next, "total": len(cache.snapshots)}, nil
 }

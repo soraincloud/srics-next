@@ -233,7 +233,7 @@ func stopManaged(ctx context.Context, path string) error {
 }
 func manager(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: srics manager [info|configure|start|stop] [--config path]")
+		return errors.New("usage: srics manager [info|configure|start|stop|cloud-check|recovery-snapshots|recovery-restore|recovery-inspect|recovery-activate] [--config path]")
 	}
 	path, err := configPath()
 	if err != nil {
@@ -264,6 +264,8 @@ func manager(ctx context.Context, args []string) error {
 	}
 	switch args[0] {
 	case "info":
+	case "recovery-snapshots", "recovery-restore", "recovery-activate", "recovery-inspect":
+		return recoveryManager(ctx, args[0], path, verification.ResolveTools().Restic, os.Stdin)
 	case "cloud-check":
 		var request struct {
 			Config localConfig `json:"config"`

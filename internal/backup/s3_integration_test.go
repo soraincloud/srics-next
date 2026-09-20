@@ -236,6 +236,10 @@ func TestS3EncryptedBackupAndIndependentRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal("backup", err)
 	}
+	entries, err := c.LibrarySnapshots(ctx)
+	if err != nil || len(entries) != 1 || entries[0].ID != id {
+		t.Fatal("S3 snapshot history", entries, err)
+	}
 	if err = c.Check(ctx); err != nil {
 		t.Fatal("check", err)
 	}

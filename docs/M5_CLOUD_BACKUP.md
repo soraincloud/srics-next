@@ -52,3 +52,5 @@ Endpoint 使用 HTTPS 并正常验证服务器证书；不支持关闭验证。�
 `./scripts/check.sh` 全部通过（前端 9 项测试、TypeScript/Vite、Go vet/race、集成恢复与 11 项 M0 验证）。macOS 包编译与启动器生命周期检查通过。手工验收本机云端字段及未填写配置提示、网页目标状态隔离、390px 窄屏布局；新版演示库手动本地备份及全量读取检查成功。
 
 参考：[restic S3 配置](https://restic.readthedocs.io/en/stable/030_preparing_a_new_repo.html#s3-compatible-storage)、[restic 仓库探测与退出码](https://restic.readthedocs.io/en/stable/075_scripting.html#checking-if-a-repository-is-already-initialized)。
+
+本机恢复窗口与历史快照浏览已补齐，见 [M5 恢复记录](M5_RECOVERY.md)；上面的命令行入口继续保留。

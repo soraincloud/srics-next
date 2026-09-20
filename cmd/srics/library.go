@@ -83,7 +83,7 @@ func restoreLibrary(ctx context.Context, args []string, binary string) error {
 		return err
 	}
 	if flags.NArg() != 0 || *target == "" {
-		return errors.New("恢复需要 --repo --password-file --snapshot --target；目标必须不存在")
+		return errors.New("恢复需要 --repo 或 --s3-config，以及 --password-file --snapshot --target；目标必须不存在")
 	}
 	pass, err := privateFile(*passwordFile, 4096)
 	if err != nil {
@@ -111,13 +111,12 @@ func restoreLibrary(ctx context.Context, args []string, binary string) error {
 	} else if *credentialsFile != "" {
 		return errors.New("云端恢复需要 --s3-config")
 	}
-	if err = c.Restore(ctx, *snapshot, *target); err != nil {
-		return err
+	var protected []string
+	if path, e := configPath(); e == nil {
+		if cfg, _, e := loadConfig(path); e == nil {
+			protected = append(protected, cfg.Data, cfg.BackupRepository, filepath.Dir(path))
+		}
 	}
-	l, err := library.Open(*target)
-	if err != nil {
-		return err
-	}
-	defer l.Close()
-	return l.Verify(ctx)
+	_, err = restoreVerified(ctx, c, *snapshot, *target, protected...)
+	return err
 }

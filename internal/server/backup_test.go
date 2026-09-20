@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -131,5 +132,43 @@ func TestScheduledFailurePersistsAndDoesNotRecreateRepository(t *testing.T) {
 	record, err = a.readBackupRecord()
 	if err != nil || record.Status != "" {
 		t.Fatal("old destination status leaked to new one")
+	}
+}
+
+func TestBackupHistoryPaginationAndTargetIsolation(t *testing.T) {
+	entries := make([]backup.Snapshot, 53)
+	for i := range entries {
+		entries[i] = backup.Snapshot{ID: fmt.Sprintf("%064x", i+1), Time: time.Now().Add(-time.Duration(i) * time.Minute)}
+	}
+	a := &LibraryAPI{backup: backup.Client{Repository: "/local-repo"}, cloud: backup.Client{Repository: "s3:https://cloud.test/bucket/prefix"}, backupHistories: map[string]snapshotCache{
+		"local": {snapshots: entries, until: time.Now().Add(time.Minute)}, "cloud": {snapshots: []backup.Snapshot{}, until: time.Now().Add(time.Minute)}}}
+	first, err := a.backupHistory(context.Background(), "local", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := first.(map[string]any)
+	if len(page["snapshots"].([]backup.Snapshot)) != 50 || page["next"] != entries[49].ID {
+		t.Fatal("first page", page)
+	}
+	next, err := a.backupHistory(context.Background(), "local", page["next"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	page = next.(map[string]any)
+	if len(page["snapshots"].([]backup.Snapshot)) != 3 || page["next"] != "" {
+		t.Fatal("last page", page)
+	}
+	cloud, err := a.backupHistory(context.Background(), "cloud", "")
+	if err != nil || len(cloud.(map[string]any)["snapshots"].([]backup.Snapshot)) != 0 {
+		t.Fatal("local history leaked to cloud", cloud, err)
+	}
+	if _, err = a.backupHistory(context.Background(), "local", "missing"); err == nil {
+		t.Fatal("stale cursor accepted")
+	}
+	a.backupHistoryMu.Lock()
+	_, err = a.backupHistory(context.Background(), "local", "")
+	a.backupHistoryMu.Unlock()
+	if err != library.ErrConflict {
+		t.Fatal("parallel restic list permitted", err)
 	}
 }

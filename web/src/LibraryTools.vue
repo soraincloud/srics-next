@@ -10,6 +10,28 @@ const items = ref<Item[]>([]),
   busy = ref(false),
   next = ref(""),
   snapshot = ref(0);
+type BackupSnapshot = { id: string; time: string; files?: number; bytes?: number };
+const history = ref<BackupSnapshot[]>([]), historyLoaded = ref(false), historyBusy = ref(false),
+  historyError = ref(""), historyNext = ref(""), historyTotal = ref(0);
+let historyVersion = 0;
+async function loadHistory(more = false) {
+  const version = ++historyVersion;
+  historyBusy.value = true;
+  historyError.value = "";
+  if (!more) { history.value = []; historyLoaded.value = false; historyNext.value = ""; }
+  try {
+    const data = await api(`/api/backup/snapshots?target=${target.value}${more ? "&after=" + historyNext.value : ""}`);
+    if (stopped || version !== historyVersion) return;
+    history.value = more ? [...history.value, ...data.snapshots] : data.snapshots;
+    historyNext.value = data.next;
+    historyTotal.value = data.total;
+    historyLoaded.value = true;
+  } catch (e) {
+    if (!stopped && version === historyVersion) historyError.value = (e as Error).message;
+  } finally {
+    if (version === historyVersion) historyBusy.value = false;
+  }
+}
 const names: Record<string, string> = {
   comics: "漫画",
   novels: "小说",
@@ -75,6 +97,7 @@ watch([() => props.page, target], () => {
   clearTimeout(timer);
   error.value = "";
   backup.value = undefined;
+  historyVersion++; history.value = []; historyLoaded.value = false; historyBusy.value = false; historyError.value = ""; historyNext.value = "";
   void load();
 });
 onMounted(() => load());
@@ -237,9 +260,30 @@ onUnmounted(() => {
       <dd class="mono">{{ backup.last.snapshot }}</dd>
       <dt>实际恢复演练</dt>
       <dd>
-        需用独立目录执行恢复命令并核对；样本验证不代表真实资料已完成恢复。
+        在本机程序中选择“从备份恢复”，恢复到新目录并校验。结果保存在恢复目录中；私密内容仍需使用保险库口令解锁确认。
       </dd>
     </dl>
+    <section v-if="backup.configured" class="backup-history panel" aria-label="历史备份">
+      <div class="backup-history-heading">
+        <h2>历史备份<span v-if="historyLoaded">{{ historyTotal }}</span></h2>
+        <button class="button small secondary" :disabled="historyBusy" @click="loadHistory()">
+          <Icon name="refresh" />{{ historyBusy ? "读取中…" : historyLoaded ? "刷新" : "查看历史" }}
+        </button>
+      </div>
+      <p v-if="historyError" class="notice warning" role="alert">{{ historyError }}</p>
+      <template v-if="historyLoaded">
+        <ol v-if="history.length" class="backup-snapshots">
+          <li v-for="entry in history" :key="entry.id">
+            <div class="snapshot-summary"><time :datetime="entry.time">{{ date(entry.time) }}</time><span v-if="entry.bytes != null">{{ fileSize(entry.bytes) }}<template v-if="entry.files != null"> · {{ entry.files }} 个备份文件</template></span></div>
+            <code>{{ entry.id }}</code>
+            <span v-if="entry.id === backup.last?.snapshot && backup.last?.readVerified" class="snapshot-check">已通过完整读取检查</span>
+          </li>
+        </ol>
+        <p v-else class="subtle-copy">这个目标还没有资料库快照。</p>
+        <button v-if="historyNext" class="button small secondary" :disabled="historyBusy" @click="loadHistory(true)">加载更多</button>
+      </template>
+      <p class="backup-history-note">在本机程序中选择恢复点。文件数量包含索引与预览，不等于资料条目数；列出快照不代表已通过恢复验证。</p>
+    </section>
     <p v-if="backup.last?.error" class="notice warning">
       {{ backup.last.error }}
     </p>
