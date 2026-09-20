@@ -317,11 +317,18 @@ func (l *Library) ExpirePrivateTrash(ctx context.Context, a *vault.Access, days 
 	if days < 1 {
 		return nil
 	}
+	l.transferMu.Lock()
+	defer l.transferMu.Unlock()
+	l.objectsMu.Lock()
+	defer l.objectsMu.Unlock()
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	items, err := l.PrivateItems(ctx, a)
 	if err != nil {
 		return err
 	}
 	cutoff := time.Now().UTC().AddDate(0, 0, -days)
+	ids := []string{}
 	for _, it := range items {
 		if it.Deleted == "" {
 			continue
@@ -331,10 +338,37 @@ func (l *Library) ExpirePrivateTrash(ctx context.Context, a *vault.Access, days 
 			return err
 		}
 		if date.Before(cutoff) {
-			if err = l.PurgePrivate(ctx, a, it.ID, it.Revision); err != nil && !errors.Is(err, ErrConflict) {
+			ids = append(ids, it.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	err = a.Commit(ctx, func() error {
+		if err := l.Check(); err != nil {
+			return err
+		}
+		tx, err := l.db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		for _, id := range ids {
+			if err = ctx.Err(); err != nil {
+				return err
+			}
+			if _, err = tx.Exec("DELETE FROM private_items WHERE id=?", id); err != nil {
+				return err
+			}
+			if _, err = tx.Exec("DELETE FROM transfers WHERE id=?", id); err != nil {
 				return err
 			}
 		}
+		return tx.Commit()
+	})
+	if err != nil {
+		return err
 	}
-	return nil
+	// One sweep per batch, avoiding a full directory scan for each expired item.
+	return l.collectLocked()
 }

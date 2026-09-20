@@ -91,3 +91,64 @@ func TestTrashExpiryPrivateUnlockAndNovelRelations(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+func TestPrivateExpiryBatchPreservesActiveAndRecent(t *testing.T) {
+	l := testLibrary(t)
+	a := privateAccess(t)
+	ctx := context.Background()
+	key, _, _, _ := a.Snapshot()
+	keep := []PrivateItem{}
+	expired := []string{}
+	for i := 0; i < 6; i++ {
+		it := privateUpload(t, l, a, "files", "batch", []byte("synthetic body"))
+		if i == 0 {
+			keep = append(keep, it)
+			continue
+		}
+		it, err := l.ChangePrivate(ctx, a, it.ID, "", "trash", it.Revision)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i == 1 {
+			keep = append(keep, it)
+			continue
+		}
+		row, err := l.privateRow(it.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		it.Deleted = time.Now().UTC().AddDate(0, 0, -31).Format(time.RFC3339Nano)
+		payload, err := encodePrivate(it, row, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = l.db.Exec("UPDATE private_items SET payload=? WHERE id=?", payload, it.ID); err != nil {
+			t.Fatal(err)
+		}
+		expired = append(expired, it.ID)
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if err := l.ExpirePrivateTrash(cancelled, a, 30); err == nil {
+		t.Fatal("cancelled batch accepted")
+	}
+	if all, err := l.PrivateItems(ctx, a); err != nil || len(all) != 6 {
+		t.Fatal("cancelled batch deleted data", err)
+	}
+	if err := l.ExpirePrivateTrash(ctx, a, 30); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range expired {
+		if _, err := l.PrivateItem(a, id); !errors.Is(err, ErrMissing) {
+			t.Fatal(id, err)
+		}
+	}
+	for _, it := range keep {
+		if body := privateBytes(t, l, a, it, false); string(body) != "synthetic body" {
+			t.Fatal("unexpired original removed")
+		}
+	}
+	if err := l.Verify(ctx); err != nil {
+		t.Fatal(err)
+	}
+}
