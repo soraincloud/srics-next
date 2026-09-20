@@ -29,10 +29,13 @@ type Server struct {
 }
 
 func New(ctx context.Context, address string, files fs.FS, run Runner) *Server {
-	_, port, _ := net.SplitHostPort(address)
+	host, port, _ := net.SplitHostPort(address)
 	s := &Server{ctx: ctx, report: verification.Pending(), run: run, files: files, allowed: map[string]bool{}}
 	for _, host := range []string{"127.0.0.1", "localhost", "::1"} {
 		s.allowed[net.JoinHostPort(host, port)] = true
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsPrivate() {
+		s.allowed[address] = true
 	}
 	return s
 }
@@ -53,7 +56,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if origin := r.Header.Get("Origin"); origin != "" {
 		u, err := url.Parse(origin)
-		if err != nil || u.Scheme != "http" || u.Host != r.Host || u.Path != "" {
+		scheme := "http"
+		if r.TLS != nil {
+			scheme = "https"
+		}
+		if err != nil || u.Scheme != scheme || u.Host != r.Host || u.Path != "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 			http.Error(w, "invalid origin", http.StatusForbidden)
 			return
 		}

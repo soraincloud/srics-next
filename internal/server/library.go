@@ -14,7 +14,6 @@ import (
 	"mime"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -34,19 +33,21 @@ type session struct {
 	vault   *vault.Access
 }
 type LibraryAPI struct {
-	private      privateSecurity
-	store        *library.Library
-	converter    media.Converter
-	ctx          context.Context
-	mu           sync.Mutex
-	sessions     map[string]session
-	loginMu      sync.Mutex
-	failures     int
-	nextLogin    time.Time
-	backup       backup.Client
-	backupMu     sync.Mutex
-	backupActive bool
-	wg           sync.WaitGroup
+	private          privateSecurity
+	store            *library.Library
+	converter        media.Converter
+	ctx              context.Context
+	mu               sync.Mutex
+	sessions         map[string]session
+	loginMu          sync.Mutex
+	failures         int
+	nextLogin        time.Time
+	backup           backup.Client
+	backupMu         sync.Mutex
+	backupActive     bool
+	backupDailyAt    string
+	backupStateError error
+	wg               sync.WaitGroup
 }
 
 func (s *Server) EnableLibrary(l *library.Library, c media.Converter, b backup.Client) {
@@ -189,7 +190,7 @@ func (a *LibraryAPI) auth(w http.ResponseWriter, r *http.Request) bool {
 		s.vault.Lock()
 		delete(a.sessions, c.Value)
 		a.mu.Unlock()
-		http.SetCookie(w, &http.Cookie{Name: "srics_session", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode})
+		http.SetCookie(w, &http.Cookie{Name: "srics_session", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode})
 		writeJSON(w, 200, map[string]bool{"ok": true})
 		return false
 	}
@@ -568,96 +569,4 @@ func (a *LibraryAPI) zip(w http.ResponseWriter, r *http.Request, items []library
 	if z.Close() != nil {
 		panic(http.ErrAbortHandler)
 	}
-}
-func (a *LibraryAPI) backupStatus() (any, error) {
-	data, err := a.store.Setting("backup")
-	if err != nil {
-		return nil, err
-	}
-	var record any
-	if len(data) > 0 {
-		if err = json.Unmarshal(data, &record); err != nil {
-			return nil, err
-		}
-	}
-	a.backupMu.Lock()
-	active := a.backupActive
-	a.backupMu.Unlock()
-	return map[string]any{"configured": a.backup.Repository != "", "running": active, "last": record}, nil
-}
-func (a *LibraryAPI) startBackup() error {
-	a.backupMu.Lock()
-	defer a.backupMu.Unlock()
-	if a.backupActive {
-		return library.ErrConflict
-	}
-	if a.backup.Repository == "" {
-		return errors.New("尚未配置备份目录与独立备份口令，配置方式见使用说明")
-	}
-	if a.ctx.Err() != nil {
-		return errors.New("服务正在停止")
-	}
-	a.backupActive = true
-	a.wg.Add(1)
-	go func() {
-		defer a.wg.Done()
-		defer func() { a.backupMu.Lock(); a.backupActive = false; a.backupMu.Unlock() }()
-		ctx, cancel := context.WithTimeout(a.ctx, 2*time.Hour)
-		defer cancel()
-		started := time.Now().UTC().Format(time.RFC3339Nano)
-		stage := filepath.Join(a.store.Root, "staging", "backup-"+library.NewID())
-		defer os.RemoveAll(stage)
-		err := a.store.Snapshot(ctx, stage)
-		if err == nil {
-			pinned, e := library.Open(stage)
-			if e != nil {
-				err = e
-			} else {
-				err = pinned.Verify(ctx)
-				closeErr := pinned.Close()
-				if err == nil {
-					err = closeErr
-				}
-			}
-		}
-		id := ""
-		if err == nil {
-			if _, e := os.Stat(filepath.Join(a.backup.Repository, "config")); os.IsNotExist(e) {
-				entries, e := os.ReadDir(a.backup.Repository)
-				if os.IsNotExist(e) || (e == nil && len(entries) == 0) {
-					err = a.backup.Init(ctx)
-				} else {
-					err = errors.New("备份目标非空且不是 restic 仓库")
-				}
-			}
-		}
-		if err == nil {
-			id, err = a.backup.BackupLibrary(ctx, stage)
-		}
-		verified := false
-		if err == nil {
-			err = a.backup.Check(ctx)
-			verified = err == nil
-		}
-		previous, _ := a.store.Setting("backup")
-		record := map[string]any{}
-		if len(previous) > 0 {
-			_ = json.Unmarshal(previous, &record)
-		}
-		record["attemptedAt"] = started
-		record["error"] = ""
-		record["status"] = "passed"
-		if err != nil {
-			record["status"] = "failed"
-			record["error"] = "备份未完成，请检查目标目录、口令文件及资料盘"
-		} else {
-			record["snapshot"] = id
-			record["savedAt"] = started
-			record["verifiedAt"] = time.Now().UTC().Format(time.RFC3339Nano)
-			record["readVerified"] = verified
-		}
-		encoded, _ := json.Marshal(record)
-		_ = a.store.SetSetting("backup", encoded)
-	}()
-	return nil
 }

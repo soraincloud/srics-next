@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/soraincloud/srics-next/internal/atomicfile"
 	"github.com/soraincloud/srics-next/internal/library"
+	"github.com/soraincloud/srics-next/internal/localtls"
 	"github.com/soraincloud/srics-next/internal/media"
 	"github.com/soraincloud/srics-next/internal/server"
 	"github.com/soraincloud/srics-next/internal/verification"
@@ -108,8 +110,18 @@ func run(args []string) error {
 			return err
 		}
 		ip := net.ParseIP(host)
-		if host != "localhost" && (ip == nil || !ip.IsLoopback()) {
-			return errors.New("当前开发版仅允许本机访问；局域网 HTTPS 在发布阶段开放")
+		var tlsConfig *tls.Config
+		if savedConfig != nil && savedConfig.LANAddress != "" {
+			if err := localtls.Ensure(tlsDirectory(*config), host); err != nil {
+				return err
+			}
+			cert, _, err := localtls.Load(tlsDirectory(*config), host)
+			if err != nil {
+				return err
+			}
+			tlsConfig = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13}
+		} else if host != "localhost" && (ip == nil || !ip.IsLoopback()) {
+			return errors.New("局域网访问需在本机程序中配置 HTTPS")
 		}
 		listener, err := net.Listen("tcp", *address)
 		if err != nil {
@@ -134,6 +146,9 @@ func run(args []string) error {
 			return verification.Run(ctx, verification.ResolveTools(), publish)
 		})
 		app.EnableLibrary(l, media.Converter{CWebP: tools.CWebP}, b)
+		if savedConfig != nil {
+			app.StartBackupSchedule(savedConfig.BackupDailyAt)
+		}
 		srv := &http.Server{Handler: app, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
 		done := make(chan struct{})
 		go func() {
@@ -143,7 +158,12 @@ func run(args []string) error {
 			defer cancel()
 			srv.Shutdown(stop)
 		}()
-		fmt.Printf("SRICS Next %s · 本机开发版\nhttp://%s\n按 Ctrl+C 停止。\n", version, listener.Addr())
+		scheme := "http"
+		if tlsConfig != nil {
+			scheme = "https"
+			listener = tls.NewListener(listener, tlsConfig)
+		}
+		fmt.Printf("SRICS Next %s\n%s://%s\n按 Ctrl+C 停止。\n", version, scheme, listener.Addr())
 		err = srv.Serve(listener)
 		cancel()
 		<-done

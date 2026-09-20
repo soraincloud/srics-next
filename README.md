@@ -2,7 +2,7 @@
 
 轻量个人资料库，用于局域网文件管理、独立加密保险库与可验证的加密备份。
 
-**当前状态：已开放登录、漫画、小说、图片、个人照片、可重试上传、回收站与本地加密备份。私密照片与个人文件已接入独立保险库；局域网发布、自动云备份和异机恢复验收仍待完成。**
+**当前状态：已开放登录、漫画、小说、图片、个人照片、可重试上传、回收站与本地加密备份。私密照片与个人文件已接入独立保险库；局域网 HTTPS 与本地每日备份已接入，自动云备份和异机恢复验收仍待完成。**
 
 私密功能、加密边界与限制见 [私密空间记录](docs/M4_PRIVATE.md)。小说编辑、保存与阅读见 [小说功能记录](docs/M3_NOVELS.md)。本机启动、备份恢复和公共限制见 [第一批功能记录](docs/M1_M2_LIBRARY.md)；底层技术验证见 [M0 开发记录](docs/M0_FOUNDATION.md)。下文完整六类业务与部署方案仍是首版目标。
 
@@ -18,13 +18,13 @@ brew install webp restic
 
 程序包内含前端、Go 服务、cwebp、restic 及其动态库。构建完成后运行不需要 Go、Node.js 或 Homebrew；`start.command` 也可直接打开配置窗口。当前是本机构建、临时签名的开发包，尚未完成 Apple 公证或其他设备兼容性验收。
 
-默认资料目录为 `~/Library/Application Support/SRICS Next/library`，已有资料和密码会沿用。完整操作与后台管理说明见 [本机启动程序](docs/LOCAL_LAUNCHER.md)。当前只监听 `127.0.0.1`，不开放局域网 HTTP。
+默认资料目录为 `~/Library/Application Support/SRICS Next/library`，已有资料和密码会沿用。完整操作与后台管理说明见 [本机启动程序](docs/LOCAL_LAUNCHER.md)。默认仅监听 `127.0.0.1`；局域网模式使用 HTTPS，首次访问需要安装、信任导出的公共证书，见 [M5 部署配置](docs/M5_DEPLOYMENT.md)。
 
 运行 `./scripts/check.sh` 完成构建、静态检查、并发测试和恢复集成测试。打包后运行 `python3 scripts/check-launcher.py 'dist/SRICS Next.app/Contents/Resources/bin/srics'` 检查独立测试资料库的后台启停与登录。样本验证仍可从网页运行，或执行 `./bin/srics verify --report reports/new-report.json`；不会覆盖已有报告，也不读取真实资料。
 
 界面参考 Lumoswitch Global 版的黑白对比、描边卡片与胶囊控件，支持浅色 / 深色切换。桌面使用侧边栏，手机使用底部导航。设计与交互约定见 [界面记录](docs/INTERFACE.md)。
 
-当前开发版仅允许本机访问。漫画、图片和个人照片可以实际上传使用，小说支持章节编辑与阅读；私密照片与个人文件需使用独立保险库口令解锁。当前不配置云账号，也不读取旧 SRICS 数据。
+当前可在本机程序中选择仅本机访问或局域网 HTTPS。漫画、图片和个人照片可以实际上传使用，小说支持章节编辑与阅读；私密照片与个人文件需使用独立保险库口令解锁。当前不配置云账号，也不读取旧 SRICS 数据。
 
 面向个人单用户使用，短期原始文件规模不超过 100GB。运行结构控制为一个主程序、一个 SQLite 数据库、本地文件目录，以及随发布包附带的 restic 工具。
 

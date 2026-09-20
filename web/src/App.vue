@@ -127,7 +127,7 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
       </a>
       <span class="header-divider"></span><span class="header-label">个人资料库</span>
       <div class="header-actions">
-        <span class="connection" :class="connection"><span class="connection-dot"></span>{{ connection === "online" ? "本机已连接" : connection === "offline" ? "连接已中断" : "正在连接" }}</span>
+        <span class="connection" :class="connection"><span class="connection-dot"></span>{{ connection === "online" ? "已连接" : connection === "offline" ? "连接已中断" : "正在连接" }}</span>
         <button v-if="vaultOpen" class="icon-button" aria-label="锁定保险库" title="锁定保险库" @click="lockVault().catch(()=>{})"><Icon name="lock" /></button>
         <button class="icon-button logout-button" aria-label="退出登录" title="退出登录" @click="logout"><Icon name="logout" /></button>
         <button class="theme-toggle" :aria-label="theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'" :title="theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'" @click="toggleTheme"><Icon :name="theme === 'dark' ? 'sun' : 'moon'" /></button>
@@ -295,15 +295,15 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
             <div><h2>SRICS Next</h2><p>当前可以导入漫画、浏览图片、保存照片原件，以及从回收站恢复内容。登录、可重试上传和本地加密备份已接入；小说编辑与阅读、私密照片和个人文件也已接入。</p></div>
           </section>
           <section aria-labelledby="roadmap-heading">
-            <div class="section-heading"><h2 id="roadmap-heading">开发计划</h2><span>当前阶段 M4</span></div>
+            <div class="section-heading"><h2 id="roadmap-heading">开发计划</h2><span>当前阶段 M5</span></div>
             <ol class="roadmap panel">
-              <li v-for="stage in stages" :key="stage.id" :class="{ current: stage.id === 'M4' }">
+              <li v-for="stage in stages" :key="stage.id" :class="{ current: stage.id === 'M5' }">
                 <span class="stage-number">{{ stage.id }}</span><div><h3>{{ stage.name }}</h3><p>{{ stage.detail }}</p></div><span class="stage-state">{{ stage.state }}</span>
               </li>
             </ol>
           </section>
           <div class="about-notes">
-            <div><Icon name="computer" /><h3>运行方式</h3><p>通过本机程序配置和启停服务。当前仅本机访问，局域网 HTTPS 仍待完成。</p></div>
+            <div><Icon name="computer" /><h3>运行方式</h3><p>通过本机程序配置和启停服务。可选择仅本机访问，或配置局域网 HTTPS 与每日加密备份。</p></div>
             <div><Icon name="shield" /><h3>恢复验证</h3><p>验证报告可下载留存。服务重启后，最近一次结果会清空。</p></div>
           </div>
           <a href="#/verify" class="text-link">打开恢复验证<Icon name="arrow" /></a>

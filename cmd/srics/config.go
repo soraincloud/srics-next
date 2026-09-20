@@ -10,18 +10,22 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/soraincloud/srics-next/internal/backup"
 	"github.com/soraincloud/srics-next/internal/library"
+	"github.com/soraincloud/srics-next/internal/localtls"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type localConfig struct {
 	Data               string `json:"data"`
 	Port               int    `json:"port"`
+	LANAddress         string `json:"lanAddress"`
 	BackupRepository   string `json:"backupRepository"`
 	BackupPasswordFile string `json:"backupPasswordFile"`
+	BackupDailyAt      string `json:"backupDailyAt"`
 }
 type configureRequest struct {
 	Config               localConfig `json:"config"`
@@ -53,13 +57,37 @@ func loadConfig(path string) (localConfig, bool, error) {
 	}
 	return c, true, c.validate()
 }
-func (c localConfig) address() string { return net.JoinHostPort("127.0.0.1", strconv.Itoa(c.Port)) }
+func (c localConfig) address() string {
+	host := c.LANAddress
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	return net.JoinHostPort(host, strconv.Itoa(c.Port))
+}
+func (c localConfig) url() string {
+	if c.LANAddress != "" {
+		return "https://" + c.address()
+	}
+	return "http://" + c.address()
+}
+func tlsDirectory(configPath string) string { return filepath.Join(filepath.Dir(configPath), "https") }
 func (c localConfig) validate() error {
 	if !filepath.IsAbs(c.Data) || filepath.Clean(c.Data) == "/" {
 		return errors.New("请选择资料目录的绝对路径")
 	}
 	if c.Port < 1024 || c.Port > 65535 {
 		return errors.New("端口需在 1024–65535 之间")
+	}
+	if c.LANAddress != "" {
+		ip := net.ParseIP(c.LANAddress)
+		if ip == nil || !ip.IsPrivate() || ip.String() != c.LANAddress {
+			return errors.New("局域网地址需为本机的私有 IP，例如 192.168.1.10")
+		}
+	}
+	if c.BackupDailyAt != "" {
+		if _, err := time.Parse("15:04", c.BackupDailyAt); err != nil || len(c.BackupDailyAt) != 5 || c.BackupRepository == "" {
+			return errors.New("自动备份需先配置备份目录，时间使用 HH:mm 格式")
+		}
 	}
 	if c.BackupRepository == "" && c.BackupPasswordFile == "" {
 		return nil
@@ -232,6 +260,11 @@ func applyConfig(path string, req configureRequest) error {
 	}
 	if req.VaultIdleMinutes < 0 || req.VaultIdleMinutes > 60 {
 		return errors.New("自动锁定时间需为 1–60 分钟")
+	}
+	if c.LANAddress != "" {
+		if err = localtls.Ensure(tlsDirectory(path), c.LANAddress); err != nil {
+			return err
+		}
 	}
 	// Publish paths before updating credentials; a failed configuration write
 	// must never change the existing login password.

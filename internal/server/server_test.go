@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -37,6 +38,38 @@ func TestLocalBoundary(t *testing.T) {
 				t.Fatal("response may be cached")
 			}
 		})
+	}
+}
+
+func TestHTTPSOriginBoundary(t *testing.T) {
+	s := New(context.Background(), "192.168.1.2:19473", fstest.MapFS{}, nil)
+	for _, tc := range []struct {
+		host, origin string
+		status       int
+	}{
+		{"192.168.1.2:19473", "https://192.168.1.2:19473", 200},
+		{"192.168.1.2:19473", "http://192.168.1.2:19473", 403},
+		{"192.168.1.2:19473", "https://192.168.1.3:19473", 403},
+		{"192.168.1.2:19473", "https://user@192.168.1.2:19473", 403},
+		{"192.168.1.2:19473", "https://192.168.1.2:19473?x", 403},
+		{"attacker.example:19473", "", 403},
+	} {
+		r := httptest.NewRequest("GET", "https://"+tc.host+"/api/status", nil)
+		r.Header.Set("Origin", tc.origin)
+		r.TLS = &tls.ConnectionState{}
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		if w.Code != tc.status {
+			t.Fatalf("%s %s: %d", tc.host, tc.origin, w.Code)
+		}
+	}
+	r := httptest.NewRequest("GET", "http://192.168.1.2:19473/api/status", nil)
+	r.Header.Set("Origin", "https://192.168.1.2:19473")
+	r.Header.Set("X-Forwarded-Proto", "https")
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, r)
+	if w.Code != 403 {
+		t.Fatal("untrusted forwarding header changed origin scheme")
 	}
 }
 func TestOnlyOneVerificationAtATime(t *testing.T) {

@@ -4,8 +4,10 @@ import AppKit
 struct LocalConfig: Codable, Equatable, Sendable {
     var data = ""
     var port = 19473
+    var lanAddress = ""
     var backupRepository = ""
     var backupPasswordFile = ""
+    var backupDailyAt = ""
 }
 struct ServiceStatus: Codable, Sendable {
     var config: LocalConfig
@@ -16,6 +18,10 @@ struct ServiceStatus: Codable, Sendable {
     var vaultIdleMinutes: Int
     var url: String
     var log: String
+    var lanAddresses: [String]
+    var certificate: String
+    var certFingerprint: String
+    var networkError: String
 }
 struct ConfigureRequest: Encodable, Sendable {
     var config: LocalConfig
@@ -147,7 +153,16 @@ struct LauncherView: View {
                             Button("选择…") { model.choose("data") }
                         }.disabled(model.saved)
                     }
-                    LabeledContent("本机端口") { TextField("19473", text: $model.port).frame(width: 95).textFieldStyle(.roundedBorder).labelsHidden() }
+                    LabeledContent("端口") { TextField("19473", text: $model.port).frame(width: 95).textFieldStyle(.roundedBorder).labelsHidden() }
+                    Picker("访问范围", selection: $model.config.lanAddress) {
+                        Text("仅本机").tag("")
+                        ForEach(Array(Set((model.status?.lanAddresses ?? []) + (model.config.lanAddress.isEmpty ? [] : [model.config.lanAddress]))).sorted(), id: \.self) { address in
+                            Text("局域网 · \(address)").tag(address)
+                        }
+                    }
+                    if !model.config.lanAddress.isEmpty {
+                        Text("局域网使用 HTTPS。保存后导出公共证书，在访问设备上安装并信任；建议在路由器中固定此 IP。").font(.caption).foregroundStyle(.secondary)
+                    }
                     if model.saved { Text("资料目录已固定，迁移与恢复需单独操作。").font(.caption).foregroundStyle(.secondary) }
                 }
                 Section(model.passwordSet ? "修改登录密码（可选）" : "登录密码") {
@@ -174,10 +189,35 @@ struct LauncherView: View {
                         }
                     }
                     Text("使用独立备份口令，文件权限需为 600。请另存一份恢复口令。").font(.caption).foregroundStyle(.secondary)
+                    Toggle("每天自动备份", isOn: Binding(get: { !model.config.backupDailyAt.isEmpty }, set: { model.config.backupDailyAt = $0 ? "03:00" : "" }))
+                    if !model.config.backupDailyAt.isEmpty {
+                        LabeledContent("每天执行时间") {
+                            TextField("03:00", text: $model.config.backupDailyAt).frame(width: 95).textFieldStyle(.roundedBorder).labelsHidden()
+                        }
+                        Text("使用本机时区。服务启动后补做错过的备份；失败后每小时重试，不自动删除历史快照。").font(.caption).foregroundStyle(.secondary)
+                    }
                 }
             }.formStyle(.grouped).disabled(model.busy || model.running)
             Divider()
             VStack(alignment: .leading, spacing: 12) {
+                if let status = model.status, !status.networkError.isEmpty {
+                    Text(status.networkError).font(.caption).foregroundStyle(.red)
+                }
+                if let status = model.status, !status.certificate.isEmpty {
+                    HStack {
+                        Button("导出 HTTPS 公共证书…") {
+                            let panel = NSSavePanel()
+                            panel.nameFieldStringValue = "SRICS-Local-CA.cer"
+                            guard panel.runModal() == .OK, let target = panel.url else { return }
+                            do {
+                                try Data(contentsOf: URL(fileURLWithPath: status.certificate)).write(to: target, options: .atomic)
+                                model.message = "公共证书已导出。请在访问设备上安装并信任。"; model.failed = false
+                            } catch { model.message = error.localizedDescription; model.failed = true }
+                        }.disabled(model.busy)
+                        Spacer()
+                    }
+                    Text("SHA-256：\(status.certFingerprint)").font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
+                }
                 if !model.message.isEmpty { Text(model.message).font(.callout).foregroundStyle(model.failed ? Color.red : Color.secondary).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) }
                 HStack {
                     if let log = model.status?.log {
@@ -196,7 +236,7 @@ struct LauncherView: View {
                         }.buttonStyle(.borderedProminent).tint(.primary)
                     }
                 }.disabled(model.busy || model.status == nil)
-                Text(model.running ? "关闭本窗口后，服务继续运行。修改配置前请先停止服务。" : "仅本机访问。启动后在浏览器中管理资料。").font(.caption).foregroundStyle(.secondary)
+                Text(model.running ? "关闭本窗口后，服务继续运行。修改配置前请先停止服务。" : "启动后在浏览器中管理资料。").font(.caption).foregroundStyle(.secondary)
             }.padding(20)
         }.frame(width: 650, height: 800).task { model.refresh() }
     }

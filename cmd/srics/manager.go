@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -20,6 +21,7 @@ import (
 	"time"
 
 	"github.com/soraincloud/srics-next/internal/library"
+	"github.com/soraincloud/srics-next/internal/localtls"
 	"github.com/soraincloud/srics-next/internal/verification"
 	"golang.org/x/sys/unix"
 )
@@ -33,6 +35,10 @@ type managerStatus struct {
 	VaultIdleMinutes int         `json:"vaultIdleMinutes"`
 	URL              string      `json:"url"`
 	Log              string      `json:"log"`
+	LANAddresses     []string    `json:"lanAddresses"`
+	Certificate      string      `json:"certificate"`
+	CertFingerprint  string      `json:"certFingerprint"`
+	NetworkError     string      `json:"networkError"`
 }
 
 func serviceLabel(path string) string {
@@ -46,16 +52,37 @@ func serviceLoaded(ctx context.Context, path string) bool {
 }
 func readManagerStatus(ctx context.Context, path string) (managerStatus, error) {
 	c, saved, err := loadConfig(path)
-	s := managerStatus{Config: c, Saved: saved, VaultIdleMinutes: 10, URL: "http://" + c.address(), Log: filepath.Join(filepath.Dir(path), "service.log")}
+	s := managerStatus{Config: c, Saved: saved, VaultIdleMinutes: 10, URL: c.url(), Log: filepath.Join(filepath.Dir(path), "service.log"), LANAddresses: []string{}}
 	if err != nil {
 		return s, err
+	}
+	addresses, _ := net.InterfaceAddrs()
+	for _, address := range addresses {
+		ip, _, err := net.ParseCIDR(address.String())
+		if err == nil && ip.IsPrivate() {
+			s.LANAddresses = append(s.LANAddresses, ip.String())
+		}
+	}
+	transport := &http.Transport{Proxy: nil}
+	defer transport.CloseIdleConnections()
+	if c.LANAddress != "" {
+		roots, fingerprint, err := localtls.Authority(tlsDirectory(path))
+		if err != nil {
+			s.NetworkError = "HTTPS 证书不可用，请检查配置目录，或停止服务后切回仅本机访问"
+		} else {
+			s.Certificate, s.CertFingerprint = filepath.Join(tlsDirectory(path), localtls.PublicFile), fingerprint
+			transport.TLSClientConfig = &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS13}
+		}
 	}
 	if runtime.GOOS == "darwin" {
 		out, _ := exec.CommandContext(ctx, "/bin/launchctl", "print", serviceTarget(path)).Output()
 		s.Running = strings.Contains(string(out), "state = running")
 	}
 	if s.Running {
-		client := &http.Client{Timeout: time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		if s.NetworkError != "" {
+			return s, nil
+		}
+		client := &http.Client{Timeout: time.Second, Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 		res, err := client.Get(s.URL + "/api/auth")
 		if err == nil {
 			defer res.Body.Close()
@@ -117,6 +144,11 @@ func startManaged(ctx context.Context, path string) error {
 	}
 	if _, err := configuredBackup(s.Config, ""); err != nil {
 		return err
+	}
+	if s.Config.LANAddress != "" {
+		if err := localtls.Ensure(tlsDirectory(path), s.Config.LANAddress); err != nil {
+			return err
+		}
 	}
 	dep := verification.ResolveTools()
 	if dep.CWebP == "" || dep.Restic == "" {

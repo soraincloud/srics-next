@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -146,6 +147,54 @@ func TestBackupConfigurationBoundaries(t *testing.T) {
 	c.BackupRepository = filepath.Join(alias, "backup")
 	if c.validate() == nil {
 		t.Fatal("accepted symlink overlap")
+	}
+}
+
+func TestNetworkAndScheduleConfiguration(t *testing.T) {
+	root := t.TempDir()
+	c := localConfig{Data: filepath.Join(root, "library"), Port: 19473}
+	for _, address := range []string{"0.0.0.0", "8.8.8.8", "example.com", "192.168.1.2:19473", "::", "127.0.0.1"} {
+		c.LANAddress = address
+		if c.validate() == nil {
+			t.Fatal("invalid LAN address accepted", address)
+		}
+	}
+	c.LANAddress = "192.168.1.2"
+	if c.validate() != nil || c.url() != "https://192.168.1.2:19473" {
+		t.Fatal("valid LAN address rejected")
+	}
+	c.BackupDailyAt = "03:00"
+	if c.validate() == nil {
+		t.Fatal("schedule without repository accepted")
+	}
+	c.BackupRepository, c.BackupPasswordFile = filepath.Join(root, "backup"), filepath.Join(root, "password")
+	for _, at := range []string{"25:00", "03:61", "3:00", "03:00:00"} {
+		c.BackupDailyAt = at
+		if c.validate() == nil {
+			t.Fatal("invalid schedule accepted", at)
+		}
+	}
+	c.BackupDailyAt = "03:00"
+	if err := c.validate(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(c.BackupPasswordFile, []byte("synthetic-backup-password"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "config.json")
+	if err := applyConfig(path, configureRequest{Config: c, Password: syntheticPassword}); err != nil {
+		t.Fatal(err)
+	}
+	status, err := readManagerStatus(context.Background(), path)
+	if err != nil || !status.PasswordSet || status.Certificate == "" || status.CertFingerprint == "" {
+		t.Fatal("missing certificate configuration", err)
+	}
+	if err := os.Remove(status.Certificate); err != nil {
+		t.Fatal(err)
+	}
+	status, err = readManagerStatus(context.Background(), path)
+	if err != nil || status.NetworkError == "" || !status.PasswordSet {
+		t.Fatal("certificate loss prevents configuration recovery", err)
 	}
 }
 func TestLaunchPlistEscapesPathsAndContainsNoCredentials(t *testing.T) {
