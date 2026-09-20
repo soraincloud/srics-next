@@ -22,6 +22,8 @@ brew install webp restic
 
 运行 `./scripts/check.sh` 完成构建、静态检查、并发测试和恢复集成测试。打包后运行 `python3 scripts/check-launcher.py 'dist/SRICS Next.app/Contents/Resources/bin/srics'` 检查独立测试资料库的后台启停与登录。样本验证仍可从网页运行，或执行 `./bin/srics verify --report reports/new-report.json`；不会覆盖已有报告，也不读取真实资料。
 
+开发协作约定：本仓库由个人维护，默认直接在 `main` 开发。每批改动完成相应检查后，提交并推送到 `main`，不额外创建开发分支或 PR；用户另有要求时再调整流程。功能与验收记录继续维护在 `docs/`。
+
 界面参考 Lumoswitch Global 版的黑白对比、描边卡片与胶囊控件，支持浅色 / 深色切换。桌面使用侧边栏，手机使用底部导航。设计与交互约定见 [界面记录](docs/INTERFACE.md)。
 
 当前可在本机程序中选择仅本机访问或局域网 HTTPS。漫画、图片和个人照片可以实际上传使用，小说支持章节编辑与阅读；私密照片与个人文件需使用独立保险库口令解锁。当前不配置云账号，也不读取旧 SRICS 数据。
