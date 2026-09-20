@@ -164,19 +164,19 @@ struct LauncherView: View {
                         Text("局域网使用 HTTPS。保存后导出公共证书，在访问设备上安装并信任；建议在路由器中固定此 IP。").font(.caption).foregroundStyle(.secondary)
                     }
                     if model.saved { Text("资料目录已固定，迁移与恢复需单独操作。").font(.caption).foregroundStyle(.secondary) }
-                }
+                }.disabled(model.busy || model.running)
                 Section(model.passwordSet ? "修改登录密码（可选）" : "登录密码") {
                     if model.passwordSet { SecureField("当前密码", text: $model.currentPassword) }
                     SecureField(model.passwordSet ? "新密码，留空则保留" : "至少 12 个字符", text: $model.password)
                     SecureField("再次输入密码", text: $model.repeatedPassword)
-                }
+                }.disabled(model.busy || model.running)
                 Section(model.status?.vaultSet == true ? "保险库（已设置）" : "保险库口令（可选）") {
                     if model.status?.vaultSet == true { SecureField("当前保险库口令", text: $model.currentVaultPassword) }
                     SecureField(model.status?.vaultSet == true ? "新口令，留空则保留" : "独立口令，至少 12 字节", text: $model.vaultPassword)
                     SecureField("再次输入保险库口令", text: $model.repeatedVaultPassword)
                     Stepper("闲置 \(model.vaultIdleMinutes) 分钟后锁定", value: $model.vaultIdleMinutes, in: 1...60)
                     Text(model.status?.vaultSet == true ? "历史备份仍需对应的旧口令。修改口令不会撤销旧备份。" : "用于私密照片与个人文件，请独立保存。遗失后无法通过登录密码找回。").font(.caption).foregroundStyle(.secondary)
-                }
+                }.disabled(model.busy || model.running)
                 Section("加密备份（可选）") {
                     LabeledContent("备份目录") {
                         HStack { TextField("未配置", text: $model.config.backupRepository).textFieldStyle(.roundedBorder).labelsHidden()
@@ -196,8 +196,8 @@ struct LauncherView: View {
                         }
                         Text("使用本机时区。服务启动后补做错过的备份；失败后每小时重试，不自动删除历史快照。").font(.caption).foregroundStyle(.secondary)
                     }
-                }
-            }.formStyle(.grouped).disabled(model.busy || model.running)
+                }.disabled(model.busy || model.running)
+            }.formStyle(.grouped)
             Divider()
             VStack(alignment: .leading, spacing: 12) {
                 if let status = model.status, !status.networkError.isEmpty {
