@@ -40,6 +40,7 @@ const items = ref<Item[]>([]),
   seed = ref(""),
   snapshot = ref(0),
   selection = ref<string[]>([]),
+  selecting = ref(false),
   queue = ref<Upload[]>([]),
   uploading = ref(false),
   uploadVisible = ref(false);
@@ -65,6 +66,7 @@ function clearPrivate() {
   items.value = [];
   total.value = 0;
   selection.value = [];
+  selecting.value = false;
   query.value = "";
   queue.value = [];
   uploadVisible.value = false;
@@ -112,6 +114,7 @@ async function load(more = false) {
     seed.value = "";
     snapshot.value = 0;
     selection.value = [];
+    selecting.value = false;
     items.value = [];
   }
   try {
@@ -151,12 +154,18 @@ function search() {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => void load(), 250);
 }
+function toggleSelectionMode() {
+  selecting.value = !selecting.value;
+  selection.value = [];
+}
 function toggle(id: string) {
+  if (isPhoto.value) selecting.value = true;
   selection.value = selection.value.includes(id)
     ? selection.value.filter((v) => v !== id)
     : [...selection.value, id].slice(0, 100);
 }
 async function openPhoto(it: Item) {
+  error.value = "";
   viewing.value = it;
   await nextTick();
   viewer.value?.showModal();
@@ -324,6 +333,15 @@ onUnmounted(() => {
       </div>
       <div class="private-toolbar-actions">
         <button
+          v-if="isPhoto && !trash && items.length"
+          class="button secondary"
+          :aria-pressed="selecting"
+          :aria-label="selecting ? '完成选择' : '选择照片'"
+          @click="toggleSelectionMode"
+        >
+          {{ selecting ? "完成" : "选择" }}
+        </button>
+        <button
           v-if="random && !trash"
           class="button secondary"
           @click="load()"
@@ -410,13 +428,19 @@ onUnmounted(() => {
     <div
       v-if="isPhoto && !trash"
       class="private-gallery"
-      :class="{ 'private-random': random }"
+      :class="{ 'private-random': random, 'is-selecting': selecting }"
     >
-      <article v-for="it in items" :key="it.id" class="private-photo-card">
+      <article
+        v-for="it in items"
+        :key="it.id"
+        class="private-photo-card"
+        :class="{ 'is-selected': selection.includes(it.id) }"
+      >
         <button
           class="private-photo-open"
-          aria-label="查看私密照片"
-          @click="openPhoto(it)"
+          :aria-label="selecting ? '选择照片' : '查看私密照片'"
+          :aria-pressed="selecting ? selection.includes(it.id) : undefined"
+          @click="selecting ? toggle(it.id) : openPhoto(it)"
         >
           <PrivateImage :id="it.id" /></button
         ><label class="private-photo-select"
@@ -426,7 +450,7 @@ onUnmounted(() => {
             aria-label="选择照片"
             @change="toggle(it.id)"
         /></label>
-        <div class="private-photo-actions">
+        <div v-if="!selecting" class="private-photo-actions">
           <a
             :href="`/api/vault/items/${it.id}/download`"
             class="icon-button"
@@ -527,8 +551,17 @@ onUnmounted(() => {
             class="icon-button"
             :href="`/api/vault/items/${viewing.id}/download`"
             aria-label="下载原件"
-            ><Icon name="download" /></a
-          ><button
+            ><Icon name="download"
+          /></a>
+          <button
+            class="icon-button"
+            aria-label="将这张照片移到回收站"
+            :disabled="saving"
+            @click="change(viewing, 'trash')"
+          >
+            <Icon name="trash" />
+          </button>
+          <button
             class="icon-button"
             aria-label="关闭预览"
             @click="viewer?.close()"
@@ -536,6 +569,9 @@ onUnmounted(() => {
             <Icon name="close" />
           </button>
         </div>
+        <p v-if="error" class="inline-error private-viewer-error" role="alert">
+          {{ error }}
+        </p>
         <PrivateImage :key="viewing.id" :id="viewing.id" original
       /></template>
     </dialog>
