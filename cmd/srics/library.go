@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"io"
@@ -76,18 +77,40 @@ func restoreLibrary(ctx context.Context, args []string, binary string) error {
 	passwordFile := flags.String("password-file", "", "independent backup password file")
 	snapshot := flags.String("snapshot", "", "full snapshot id")
 	target := flags.String("target", "", "new restore directory")
+	s3File := flags.String("s3-config", "", "standalone S3 connection JSON (no credentials)")
+	credentialsFile := flags.String("credentials-file", "", "private S3 credentials JSON file")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 || *target == "" {
 		return errors.New("恢复需要 --repo --password-file --snapshot --target；目标必须不存在")
 	}
-	pass, err := os.ReadFile(*passwordFile)
+	pass, err := privateFile(*passwordFile, 4096)
 	if err != nil {
 		return err
 	}
 	c := backup.Client{Binary: binary, Repository: *repo, Password: strings.TrimRight(string(pass), "\r\n")}
 	clear(pass)
+	if *s3File != "" {
+		if *repo != "" {
+			return errors.New("--s3-config 与 --repo 不能同时使用")
+		}
+		data, err := os.ReadFile(*s3File)
+		if err != nil {
+			return err
+		}
+		var connection backup.S3Config
+		if json.Unmarshal(data, &connection) != nil {
+			return errors.New("S3 连接配置无法读取")
+		}
+		cfg := localConfig{Cloud: cloudConfig{Enabled: true, Connection: connection, CredentialsFile: *credentialsFile, PasswordFile: *passwordFile}}
+		c, err = configuredCloud(cfg, binary)
+		if err != nil {
+			return err
+		}
+	} else if *credentialsFile != "" {
+		return errors.New("云端恢复需要 --s3-config")
+	}
 	if err = c.Restore(ctx, *snapshot, *target); err != nil {
 		return err
 	}

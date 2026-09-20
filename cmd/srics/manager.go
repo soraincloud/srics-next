@@ -39,6 +39,7 @@ type managerStatus struct {
 	Certificate      string      `json:"certificate"`
 	CertFingerprint  string      `json:"certFingerprint"`
 	NetworkError     string      `json:"networkError"`
+	CloudCheck       string      `json:"cloudCheck"`
 }
 
 func serviceLabel(path string) string {
@@ -143,6 +144,9 @@ func startManaged(ctx context.Context, path string) error {
 		return errors.New("请先保存本机配置和登录密码")
 	}
 	if _, err := configuredBackup(s.Config, ""); err != nil {
+		return err
+	}
+	if _, err := configuredCloud(s.Config, ""); err != nil {
 		return err
 	}
 	if s.Config.LANAddress != "" {
@@ -260,6 +264,25 @@ func manager(ctx context.Context, args []string) error {
 	}
 	switch args[0] {
 	case "info":
+	case "cloud-check":
+		var request struct {
+			Config localConfig `json:"config"`
+		}
+		d := json.NewDecoder(io.LimitReader(os.Stdin, 65537))
+		d.DisallowUnknownFields()
+		if d.Decode(&request) != nil || d.Decode(&struct{}{}) != io.EOF {
+			return errors.New("云端配置格式不正确")
+		}
+		message, err := checkCloud(ctx, request.Config, verification.ResolveTools().Restic)
+		if err != nil {
+			return err
+		}
+		status, err := readManagerStatus(ctx, path)
+		if err != nil {
+			return err
+		}
+		status.CloudCheck = message
+		return json.NewEncoder(os.Stdout).Encode(status)
 	case "configure":
 		if runtime.GOOS == "darwin" && serviceLoaded(ctx, path) {
 			current, err := readManagerStatus(ctx, path)

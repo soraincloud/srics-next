@@ -147,6 +147,12 @@ func run(args []string) error {
 		})
 		app.EnableLibrary(l, media.Converter{CWebP: tools.CWebP}, b)
 		if savedConfig != nil {
+			cloud, err := configuredCloud(*savedConfig, tools.Restic)
+			if err != nil {
+				listener.Close()
+				return err
+			}
+			app.EnableCloudBackup(cloud)
 			app.StartBackupSchedule(savedConfig.BackupDailyAt)
 		}
 		srv := &http.Server{Handler: app, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}

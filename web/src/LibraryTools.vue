@@ -5,6 +5,7 @@ import { api, changed, fileSize, type Item } from "./api";
 const props = defineProps<{ page: string }>();
 const items = ref<Item[]>([]),
   backup = ref<any>(),
+  target = ref("local"),
   error = ref(""),
   busy = ref(false),
   next = ref(""),
@@ -16,8 +17,10 @@ const names: Record<string, string> = {
   photos: "个人照片",
 };
 let timer: ReturnType<typeof setTimeout> | undefined,
-  stopped = false;
+  stopped = false,
+  loadVersion = 0;
 async function load(more = false) {
+  const version = ++loadVersion;
   try {
     if (props.page === "trash") {
       const data = await api(
@@ -27,13 +30,16 @@ async function load(more = false) {
       next.value = data.next;
       snapshot.value = data.snapshot;
     } else {
-      backup.value = await api("/api/backup");
+      const result = await api(`/api/backup?target=${target.value}`);
+      if (stopped || version !== loadVersion) return;
+      backup.value = result;
       if (!stopped) {
         clearTimeout(timer);
-        timer = setTimeout(() => load(), backup.value.running ? 1500 : 30000);
+        timer = setTimeout(() => load(), backup.value.busy ? 1500 : 30000);
       }
     }
   } catch (e) {
+    if (stopped || version !== loadVersion) return;
     error.value = (e as Error).message;
   }
 }
@@ -54,7 +60,7 @@ async function start() {
   busy.value = true;
   error.value = "";
   try {
-    await api("/api/backup", { method: "POST" });
+    await api(`/api/backup?target=${target.value}`, { method: "POST" });
     await load();
   } catch (e) {
     error.value = (e as Error).message;
@@ -65,14 +71,12 @@ async function start() {
 function date(value: string) {
   return new Date(value).toLocaleString("zh-CN", { hour12: false });
 }
-watch(
-  () => props.page,
-  () => {
-    clearTimeout(timer);
-    error.value = "";
-    void load();
-  },
-);
+watch([() => props.page, target], () => {
+  clearTimeout(timer);
+  error.value = "";
+  backup.value = undefined;
+  void load();
+});
 onMounted(() => load());
 onUnmounted(() => {
   stopped = true;
@@ -92,6 +96,16 @@ onUnmounted(() => {
       </p>
     </div>
   </section>
+  <div v-if="page !== 'trash'" class="collection-toolbar">
+    <div class="segmented" role="group" aria-label="备份目标">
+      <button :aria-pressed="target === 'local'" @click="target = 'local'">
+        本地 / 独立硬盘
+      </button>
+      <button :aria-pressed="target === 'cloud'" @click="target = 'cloud'">
+        云端
+      </button>
+    </div>
+  </div>
   <p v-if="error" class="notice warning" role="alert">{{ error }}</p>
   <template v-if="page === 'trash'">
     <div v-if="items.length" class="trash-list panel">
@@ -146,7 +160,9 @@ onUnmounted(() => {
     <section class="backup-card panel">
       <span class="verification-emblem"><Icon name="shield" /></span>
       <div>
-        <p class="eyebrow">资料库加密备份</p>
+        <p class="eyebrow">
+          {{ target === "cloud" ? "云端加密备份" : "本地加密备份" }}
+        </p>
         <h2>
           {{
             backup.running
@@ -165,24 +181,31 @@ onUnmounted(() => {
             backup.running
               ? "页面可以关闭，任务会在服务端继续。"
               : !backup.configured
-                ? "支持本地目录或独立硬盘上的 restic 加密仓库。"
+                ? target === "cloud"
+                  ? "在本机程序中配置 S3 兼容存储。"
+                  : "选择本地目录或独立硬盘保存加密备份。"
                 : "包含全部六类资料、历史版本与回收站。私密内容保持加密，无需解锁保险库。"
           }}
         </p>
       </div>
       <button
         class="button primary"
-        :disabled="!backup.configured || backup.running || busy"
+        :disabled="!backup.configured || backup.busy || busy"
         @click="start"
       >
         <Icon name="shield" />{{ backup.running ? "备份中…" : "立即备份" }}
       </button>
     </section>
+    <p v-if="backup.busy && !backup.running" class="page-footnote">
+      另一个目标正在备份，完成后可执行此目标。
+    </p>
     <dl class="backup-details panel">
+      <dt>备份位置</dt>
+      <dd>{{ backup.destination || "未配置" }}</dd>
       <dt>自动备份</dt>
       <dd>
         {{
-          backup.dailyAt
+          backup.configured && backup.dailyAt
             ? `每天 ${backup.dailyAt}（主机时区 ${backup.timeZone}）`
             : "未开启"
         }}
@@ -198,7 +221,10 @@ onUnmounted(() => {
         <dd>{{ date(backup.last.attemptedAt) }}</dd>
       </template>
       <dt>配置位置</dt>
-      <dd>本机 SRICS Next 程序 · 加密备份</dd>
+      <dd>
+        本机 SRICS Next 程序 ·
+        {{ target === "cloud" ? "云端加密备份" : "本地 / 独立硬盘备份" }}
+      </dd>
     </dl>
     <dl v-if="backup.last?.savedAt" class="backup-details panel">
       <dt>最近成功备份的内容截止时间</dt>
@@ -219,8 +245,13 @@ onUnmounted(() => {
     </p>
     <section v-if="!backup.configured" class="backup-setup panel">
       <h2>备份配置</h2>
-      <p>在本机 SRICS Next 程序中选择备份目录和口令文件，保存并启动服务。</p>
-      <p>请使用独立硬盘存放备份。云端存储将在选定服务商后接入。</p>
+      <p>
+        {{
+          target === "cloud"
+            ? "填写 Endpoint、区域、存储桶与专用前缀，选择凭据和备份口令文件；检查连接后保存并启动服务。"
+            : "选择备份目录和口令文件，保存并启动服务。请使用独立硬盘存放正式备份。"
+        }}
+      </p>
     </section>
     <p class="page-footnote">
       只有完整快照和数据检查都成功，才会记录本次成功状态。上传成功不等于已备份。

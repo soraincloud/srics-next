@@ -31,3 +31,5 @@ TLS 最低 1.3；服务端按真实连接校验 HTTPS Origin、Host 与 CSRF，�
 测试仅使用合成资料，既有演示保持本机访问。仍待完成：云服务商与凭据接入、历史快照保留策略、真实独立硬盘与另一设备恢复演练、跨设备 HTTPS 信任验收、Apple 公证与多机兼容，以及前期记录的上传分块恢复和回收站自动清理。上述增量不代表可以跳过完整发布验收。
 
 实现参考：[Go x509](https://pkg.go.dev/crypto/x509)、[Go TLS](https://pkg.go.dev/crypto/tls)。
+
+后续云端接入见 [M5 云端加密备份](M5_CLOUD_BACKUP.md)；真实目标仍待部署验收。

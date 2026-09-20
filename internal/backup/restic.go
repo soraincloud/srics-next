@@ -1,5 +1,4 @@
-// Package backup runs restic without a shell. The M0 adapter accepts local
-// repositories only; cloud credentials and scheduling are later milestones.
+// Package backup runs restic without a shell for local and S3 repositories.
 package backup
 
 import (
@@ -15,22 +14,49 @@ import (
 	"strings"
 )
 
-type Client struct{ Binary, Repository, Password string }
+type Client struct {
+	Binary, Repository, Password string
+	S3                           *S3Config
+	Credentials                  Credentials
+}
 
 var snapshotID = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 func (c Client) run(ctx context.Context, dir string, args ...string) ([]byte, error) {
-	if !filepath.IsAbs(c.Repository) || len(c.Password) < 12 {
-		return nil, errors.New("absolute local repository and strong test password required")
+	if len(c.Password) < 12 {
+		return nil, errors.New("备份口令至少需要 12 字节")
 	}
-	cmd := exec.CommandContext(ctx, c.Binary, append([]string{"--repo", c.Repository, "--no-cache"}, args...)...)
+	options := []string{"--repo", c.Repository, "--no-cache"}
+	if c.S3 != nil {
+		if err := c.S3.Validate(); err != nil {
+			return nil, err
+		}
+		if err := c.Credentials.Validate(); err != nil {
+			return nil, err
+		}
+		if c.Repository != c.S3.Repository() {
+			return nil, errors.New("S3 仓库与连接配置不一致")
+		}
+		options = append(options, "-o", "s3.region="+c.S3.Region, "-o", "s3.bucket-lookup="+c.S3.lookup())
+		if c.S3.CAFile != "" {
+			options = append(options, "--cacert", c.S3.CAFile)
+		}
+	} else if !filepath.IsAbs(c.Repository) {
+		return nil, errors.New("备份目录需为绝对路径")
+	}
+	cmd := exec.CommandContext(ctx, c.Binary, append(options, args...)...)
 	cmd.Dir = dir
 	for _, v := range os.Environ() {
-		if !strings.HasPrefix(v, "RESTIC_") {
+		// An inherited AWS role/token or debug sink must never override this target.
+		key, _, _ := strings.Cut(v, "=")
+		if !strings.HasPrefix(key, "RESTIC_") && !strings.HasPrefix(key, "AWS_") && !strings.HasPrefix(key, "MINIO_") && key != "DEBUG_LOG" && key != "DEBUG_FILES" && key != "DEBUG_FUNCS" {
 			cmd.Env = append(cmd.Env, v)
 		}
 	}
 	cmd.Env = append(cmd.Env, "RESTIC_PASSWORD="+c.Password)
+	if c.S3 != nil {
+		cmd.Env = append(cmd.Env, "AWS_ACCESS_KEY_ID="+c.Credentials.AccessKeyID, "AWS_SECRET_ACCESS_KEY="+c.Credentials.SecretAccessKey, "AWS_SESSION_TOKEN="+c.Credentials.SessionToken, "AWS_SHARED_CREDENTIALS_FILE="+os.DevNull, "AWS_CONFIG_FILE="+os.DevNull, "AWS_EC2_METADATA_DISABLED=true")
+	}
 	var output bytes.Buffer
 	cmd.Stdout = &output
 	// Do not forward restic stderr or command environment into reports/logs.

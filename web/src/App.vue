@@ -303,7 +303,7 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
             </ol>
           </section>
           <div class="about-notes">
-            <div><Icon name="computer" /><h3>运行方式</h3><p>通过本机程序配置和启停服务。可选择仅本机访问，或配置局域网 HTTPS 与每日加密备份。</p></div>
+            <div><Icon name="computer" /><h3>运行方式</h3><p>通过本机程序配置和启停服务，选择局域网 HTTPS、本地与 S3 云端加密备份。</p></div>
             <div><Icon name="shield" /><h3>恢复验证</h3><p>验证报告可下载留存。服务重启后，最近一次结果会清空。</p></div>
           </div>
           <a href="#/verify" class="text-link">打开恢复验证<Icon name="arrow" /></a>

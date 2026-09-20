@@ -2,14 +2,58 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/soraincloud/srics-next/internal/backup"
 	"github.com/soraincloud/srics-next/internal/library"
 )
+
+func TestBackupTargetsHaveIndependentStatusAndSharedExecutionLock(t *testing.T) {
+	root := t.TempDir()
+	data := filepath.Join(root, "library")
+	if err := library.Create(data); err != nil {
+		t.Fatal(err)
+	}
+	l, err := library.Open(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	a := &LibraryAPI{store: l, ctx: context.Background(), backup: backup.Client{Repository: filepath.Join(root, "local")}, cloud: backup.Client{Repository: "s3:https://storage.example.com/bucket/prefix"}}
+	if err = a.saveBackupRecord(backupRecord{Repository: a.backupRepositoryID(), Status: "passed", Snapshot: "local-snapshot"}); err != nil {
+		t.Fatal(err)
+	}
+	if err = a.saveBackupRecord(backupRecord{Repository: a.backupRepositoryID("cloud"), Status: "failed", Error: "cloud failed"}, "cloud"); err != nil {
+		t.Fatal(err)
+	}
+	local, _ := a.readBackupRecord()
+	cloud, _ := a.readBackupRecord("cloud")
+	if local.Status != "passed" || cloud.Status != "failed" || cloud.Snapshot != "" {
+		t.Fatal("backup targets mixed")
+	}
+	a.backupActive = true
+	a.backupActiveTarget = "local"
+	if err = a.startBackup("cloud"); err != library.ErrConflict {
+		t.Fatal("concurrent backup accepted", err)
+	}
+	status, err := a.backupStatus("cloud")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := status.(map[string]any)
+	if view["running"] != false || view["busy"] != true {
+		t.Fatal("wrong per-target running status")
+	}
+	encoded, _ := json.Marshal(status)
+	if strings.Contains(string(encoded), "secretAccessKey") || strings.Contains(string(encoded), "passwordFile") {
+		t.Fatal("secrets leaked to status")
+	}
+}
 
 func TestDailyScheduleCatchupRetryAndDST(t *testing.T) {
 	zone, _ := time.LoadLocation("America/New_York")

@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 npm --prefix web test
 go vet ./...
 go test -race ./...
-go test -tags integration ./internal/verification ./internal/library ./internal/server -count=1
+go test -tags integration ./internal/verification ./internal/library ./internal/server ./internal/backup -count=1
 mkdir -p reports
 report="reports/m0-$(date +%Y%m%d-%H%M%S).json"
 ./bin/srics verify --report "$report"

@@ -37,5 +37,5 @@ export const stages = [
   { id: "M2", name: "漫画与图片", detail: "文件夹导入、漫画阅读与随机照片墙", state: "已接入" },
   { id: "M3", name: "小说与个人照片", detail: "章节编辑、冲突与修订、阅读和个人照片备份", state: "已接入" },
   { id: "M4", name: "私密内容", detail: "独立解锁、加密名称与受保护的预览", state: "已接入" },
-  { id: "M5", name: "发布与恢复验收", detail: "已接入局域网 HTTPS 与每日备份；云端与完整恢复验收待完成", state: "进行中" },
+  { id: "M5", name: "发布与恢复验收", detail: "已接入局域网 HTTPS、本地与 S3 每日备份；实际部署与恢复验收待完成", state: "进行中" },
 ];

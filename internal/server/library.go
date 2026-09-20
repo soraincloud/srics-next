@@ -33,21 +33,23 @@ type session struct {
 	vault   *vault.Access
 }
 type LibraryAPI struct {
-	private          privateSecurity
-	store            *library.Library
-	converter        media.Converter
-	ctx              context.Context
-	mu               sync.Mutex
-	sessions         map[string]session
-	loginMu          sync.Mutex
-	failures         int
-	nextLogin        time.Time
-	backup           backup.Client
-	backupMu         sync.Mutex
-	backupActive     bool
-	backupDailyAt    string
-	backupStateError error
-	wg               sync.WaitGroup
+	private            privateSecurity
+	store              *library.Library
+	converter          media.Converter
+	ctx                context.Context
+	mu                 sync.Mutex
+	sessions           map[string]session
+	loginMu            sync.Mutex
+	failures           int
+	nextLogin          time.Time
+	backup             backup.Client
+	cloud              backup.Client
+	backupMu           sync.Mutex
+	backupActive       bool
+	backupDailyAt      string
+	backupStateErrors  map[string]error
+	backupActiveTarget string
+	wg                 sync.WaitGroup
 }
 
 func (s *Server) EnableLibrary(l *library.Library, c media.Converter, b backup.Client) {
@@ -305,9 +307,19 @@ func (a *LibraryAPI) handle(w http.ResponseWriter, r *http.Request) {
 		a.downloadBatch(w, r)
 		return
 	case r.URL.Path == "/api/backup" && r.Method == "GET":
-		result, err = a.backupStatus()
+		target := r.URL.Query().Get("target")
+		if target != "" && target != "local" && target != "cloud" {
+			apiError(w, 400, errors.New("无效备份目标"))
+			return
+		}
+		result, err = a.backupStatus(target)
 	case r.URL.Path == "/api/backup" && r.Method == "POST":
-		err = a.startBackup()
+		target := r.URL.Query().Get("target")
+		if target != "" && target != "local" && target != "cloud" {
+			apiError(w, 400, errors.New("无效备份目标"))
+			return
+		}
+		err = a.startBackup(target)
 		if err == nil {
 			writeJSON(w, 202, map[string]bool{"running": true})
 			return

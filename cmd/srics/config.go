@@ -20,12 +20,13 @@ import (
 )
 
 type localConfig struct {
-	Data               string `json:"data"`
-	Port               int    `json:"port"`
-	LANAddress         string `json:"lanAddress"`
-	BackupRepository   string `json:"backupRepository"`
-	BackupPasswordFile string `json:"backupPasswordFile"`
-	BackupDailyAt      string `json:"backupDailyAt"`
+	Data               string      `json:"data"`
+	Port               int         `json:"port"`
+	LANAddress         string      `json:"lanAddress"`
+	BackupRepository   string      `json:"backupRepository"`
+	BackupPasswordFile string      `json:"backupPasswordFile"`
+	BackupDailyAt      string      `json:"backupDailyAt"`
+	Cloud              cloudConfig `json:"cloud"`
 }
 type configureRequest struct {
 	Config               localConfig `json:"config"`
@@ -44,7 +45,7 @@ func configPath() (string, error) {
 	return filepath.Join(dir, "SRICS Next", "config.json"), nil
 }
 func loadConfig(path string) (localConfig, bool, error) {
-	c := localConfig{Data: filepath.Join(filepath.Dir(path), "library"), Port: 19473}
+	c := localConfig{Data: filepath.Join(filepath.Dir(path), "library"), Port: 19473, Cloud: cloudConfig{Connection: backup.S3Config{Prefix: "srics/main", Lookup: "auto"}}}
 	b, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return c, false, nil
@@ -85,9 +86,12 @@ func (c localConfig) validate() error {
 		}
 	}
 	if c.BackupDailyAt != "" {
-		if _, err := time.Parse("15:04", c.BackupDailyAt); err != nil || len(c.BackupDailyAt) != 5 || c.BackupRepository == "" {
+		if _, err := time.Parse("15:04", c.BackupDailyAt); err != nil || len(c.BackupDailyAt) != 5 || (c.BackupRepository == "" && !c.Cloud.Enabled) {
 			return errors.New("自动备份需先配置备份目录，时间使用 HH:mm 格式")
 		}
+	}
+	if err := validateCloud(c); err != nil {
+		return err
 	}
 	if c.BackupRepository == "" && c.BackupPasswordFile == "" {
 		return nil
@@ -200,6 +204,9 @@ func applyConfig(path string, req configureRequest) error {
 		return errors.New("资料目录已固定；迁移或恢复需单独操作，配置不会移动或覆盖资料")
 	}
 	if _, err := configuredBackup(c, ""); err != nil {
+		return err
+	}
+	if _, err := configuredCloud(c, ""); err != nil {
 		return err
 	}
 	if req.Password != "" && (utf8.RuneCountInString(req.Password) < 12 || len(req.Password) > 72) {
