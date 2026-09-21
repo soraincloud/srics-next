@@ -41,6 +41,36 @@ func testLibrary(t *testing.T) *Library {
 	return l
 }
 func hash(data []byte) string { h := sha256.Sum256(data); return hex.EncodeToString(h[:]) }
+
+func TestWebPThumbnailNeverReplacesOriginal(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "testdata", "media", "lossless-bare.webp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := testLibrary(t)
+	for _, module := range []string{"comics", "images", "photos"} {
+		it := upload(t, l, module, "original.webp", data)
+		p := it.Pages[0]
+		if p.Thumb == "" || p.Thumb == p.Object {
+			t.Fatalf("%s thumbnail must have its own object", module)
+		}
+		thumb, err := os.ReadFile(l.ObjectPath(p.Thumb))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Equal(thumb, data) {
+			t.Fatal("test must exercise an actually re-encoded preview")
+		}
+		if _, format, err := image.Decode(bytes.NewReader(thumb)); err != nil || format != "jpeg" {
+			t.Fatal("invalid thumbnail", err)
+		}
+		original, err := os.ReadFile(l.ObjectPath(p.Object))
+		if err != nil || !bytes.Equal(original, data) || p.SHA256 != hash(data) {
+			t.Fatalf("%s thumbnail generation altered original: %v", module, err)
+		}
+	}
+}
+
 func upload(t *testing.T, l *Library, module, name string, data []byte) Item {
 	t.Helper()
 	up, err := l.CreateUpload(Upload{ID: NewID(), Module: module, Name: name, Files: []UploadFile{{Name: name, Size: int64(len(data))}}})
