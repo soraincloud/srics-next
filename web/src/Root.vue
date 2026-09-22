@@ -63,10 +63,12 @@ onMounted(check);
       </button>
     </header>
     <main class="auth-card panel">
-      <span class="module-icon large"
-        ><Icon :name="configured ? 'lock' : 'library'"
-      /></span>
-      <h1>{{ !ready ? "正在连接" : configured ? "登录" : "尚未配置" }}</h1>
+      <div class="auth-heading">
+        <span class="module-icon large"
+          ><Icon :name="configured ? 'lock' : 'library'"
+        /></span>
+        <h1>{{ !ready ? "正在连接" : configured ? "登录" : "尚未配置" }}</h1>
+      </div>
       <p v-if="ready && !configured" class="subtitle">请打开本机的 SRICS Next 程序，设置登录密码并启动服务。</p>
       <form v-if="ready && configured" class="form-stack" @submit.prevent="submit">
         <label
@@ -82,8 +84,7 @@ onMounted(check);
         /></label>
         <p v-if="error" class="inline-error" role="alert">{{ error }}</p>
         <button class="button primary" :disabled="busy">
-          {{ busy ? "登录中…" : "登录"
-          }}<Icon name="arrow" />
+          <span>{{ busy ? "登录中…" : "登录" }}</span><Icon name="arrow" />
         </button>
       </form>
       <template v-else-if="error"
