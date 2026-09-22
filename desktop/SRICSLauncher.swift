@@ -106,7 +106,7 @@ func runManager(_ action: String, payload: Data? = nil) throws -> ServiceStatus 
         Task {
             do {
                 let result = try await Task.detached { try runManager("info") }.value
-                if status == nil { config = result.config; port = String(result.config.port); vaultIdleMinutes = result.vaultIdleMinutes }
+                if status == nil || !changed { config = result.config; port = String(result.config.port); vaultIdleMinutes = result.vaultIdleMinutes }
                 status = result
             } catch { message = error.localizedDescription; failed = true }
             busy = false
@@ -374,14 +374,14 @@ struct LauncherView: View {
                     Button("停止服务") { model.perform("stop") }
                     Button("打开资料库") { if let url = URL(string: model.status?.url ?? "") { NSWorkspace.shared.open(url) } }.buttonStyle(RecoveryActionStyle())
                 } else {
-                    Button("保存配置") { model.perform("configure") }
+                    Button("保存配置") { model.perform("configure") }.disabled(model.saved && !model.changed)
                     Button(model.saved && !model.changed ? "启动服务" : "保存并启动") {
                         if model.saved && !model.changed { model.perform("start") }
                         else { model.perform("configure", startAfter: true) }
                     }.buttonStyle(RecoveryActionStyle())
                 }
             }.disabled(model.busy || model.status == nil)
-            Text(model.running ? "关闭本窗口后，服务继续运行。修改配置前请先停止服务。" : "启动后在浏览器中管理资料。").font(.caption).foregroundStyle(.secondary)
+            Text(model.running ? "关闭本窗口后，服务继续运行。修改配置前请先停止服务。" : model.saved && model.changed ? "有未保存的更改；保存并启动后生效。" : "启动后在浏览器中管理资料。").font(.caption).foregroundStyle(.secondary)
         }.padding(20).background(GlobalPalette.surface)
     }
 

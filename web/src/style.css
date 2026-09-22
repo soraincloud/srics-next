@@ -638,3 +638,20 @@ dialog::backdrop { background: rgba(0,0,0,.65); backdrop-filter: blur(6px); }
 .private-upload-row { align-items: center; flex-wrap: wrap; }
 .private-upload-row > span { flex: 1 1 160px; }
 @media(max-width:680px) { .private-upload-row { align-items: stretch; gap: 8px; } .private-upload-row > span { flex-basis: auto; } }
+
+/* Photo controls appear on intent; selection stays visible without framing the image. */
+.collection-grid:not(.comic-grid) .card-select,
+.collection-grid:not(.comic-grid) .photo-card-meta > a { opacity: 0; pointer-events: none; transition: opacity .14s; }
+.collection-grid .content-card:has(:focus-visible) .card-select,
+.collection-grid .content-card:has(:focus-visible) .photo-card-meta > a,
+.collection-grid.is-selecting .card-select,
+.collection-grid .content-card.is-selected .card-select { opacity: 1; pointer-events: auto; }
+@media (hover: hover) and (pointer: fine) {
+  .collection-grid .content-card:hover .card-select,
+  .collection-grid .content-card:hover .photo-card-meta > a { opacity: 1; pointer-events: auto; }
+}
+.selection-feedback { margin: -6px 0 18px; }
+.private-viewer-stage { display: flex; align-items: center; gap: 12px; }
+.private-viewer-stage .private-image { min-width: 0; flex: 1; }
+.private-viewer-stage .icon-button { color: inherit; }
+@media (max-width: 720px) { .private-viewer-stage { gap: 4px; } }

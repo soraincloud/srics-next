@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import Icon from "./Icon.vue";
+import { useGalleryNavigation } from "./gallery";
 import UploadPanel from "./UploadPanel.vue";
 import {
   api,
@@ -31,6 +32,8 @@ const items = ref<Item[]>([]),
   seed = ref(""),
   snapshot = ref(0),
   selection = ref<string[]>([]),
+  selecting = ref(false),
+  selectionMessage = ref(""),
   page = ref(0),
   saving = ref(false);
 const editDialog = ref<HTMLDialogElement>(),
@@ -47,9 +50,8 @@ let generation = 0,
   readObserver: IntersectionObserver | undefined;
 const backupSavedAt = ref("");
 const isComic = computed(() => props.module === "comics");
-const viewerIndex = computed(() =>
-  items.value.findIndex((i) => i.id === viewing.value?.id),
-);
+const { index: viewerIndex, moving: viewerMoving, canNext: viewerCanNext, advance: nextImage } =
+  useGalleryNavigation(items, viewing, next, loading, () => load(true));
 const selectedURL = computed(
   () => "/api/download?" + selection.value.map((id) => "id=" + id).join("&"),
 );
@@ -63,6 +65,8 @@ async function load(more = false) {
     snapshot.value = 0;
     seed.value = "";
     selection.value = [];
+    selecting.value = false;
+    selectionMessage.value = "";
   }
   try {
     if (props.itemId) {
@@ -124,7 +128,22 @@ function toggleTag(tag: string) {
     : [...selectedTags.value, tag];
   void load();
 }
+function toggleSelectionMode() {
+  selecting.value = !selecting.value;
+  selection.value = [];
+  selectionMessage.value = "";
+}
+function selectLoaded() {
+  selection.value = items.value.slice(0, 100).map(item => item.id);
+  selectionMessage.value = items.value.length > 100 ? "每次最多选择 100 项，已选前 100 项。" : "";
+}
 function toggleSelect(id: string) {
+  selecting.value = true;
+  selectionMessage.value = "";
+  if (!selection.value.includes(id) && selection.value.length >= 100) {
+    selectionMessage.value = "每次最多选择 100 项，请先取消部分选择。";
+    return;
+  }
   selection.value = selection.value.includes(id)
     ? selection.value.filter((v) => v !== id)
     : [...selection.value, id].slice(0, 100);
@@ -179,12 +198,10 @@ async function saveEdit() {
   }
 }
 function openImage(item: Item) {
+  if (selecting.value) { toggleSelect(item.id); return; }
+  error.value = "";
   viewing.value = item;
   viewer.value?.showModal();
-}
-function nextImage(delta: number) {
-  const item = items.value[viewerIndex.value + delta];
-  if (item) viewing.value = item;
 }
 function persistProgress() {
   clearTimeout(progressTimer);
@@ -249,6 +266,8 @@ watch(
   () => [props.module, props.itemId],
   () => {
     clearTimeout(progressTimer);
+    viewer.value?.close();
+    viewing.value = undefined;
     detail.value = undefined;
     items.value = [];
     readObserver?.disconnect();
@@ -338,6 +357,10 @@ onUnmounted(() => {
       <button v-if="random" class="button secondary small" @click="load()">
         <Icon name="refresh" />换一批
       </button>
+      <button v-if="!isComic && items.length" class="button secondary small"
+        :aria-pressed="selecting" :disabled="saving || loading" @click="toggleSelectionMode">
+        {{ selecting ? "完成选择" : "选择图片" }}
+      </button>
       <UploadPanel :key="module" :module="module" />
     </div>
     <div
@@ -362,23 +385,25 @@ onUnmounted(() => {
         {{ tag }}</button
       ><span v-if="selectedTags.length">同时满足所选标签</span>
     </div>
-    <div v-if="selection.length" class="selection-bar panel">
-      <span>已选 {{ selection.length }} 项</span
-      ><a :href="selectedURL" class="button small secondary"
+    <div v-if="selecting" class="selection-bar panel">
+      <span role="status">已选 {{ selection.length }} / 100 项</span>
+      <button class="text-link" :disabled="saving || loading" @click="selectLoaded">选择已加载项</button>
+      <a v-if="selection.length" :href="selectedURL" class="button small secondary"
         ><Icon name="download" />打包下载</a
       ><button
         class="button small secondary"
-        :disabled="saving"
+        :disabled="saving || !selection.length"
         @click="trash(items.filter((i) => selection.includes(i.id)))"
       >
         <Icon name="trash" />移到回收站</button
-      ><button class="text-link" @click="selection = []">取消选择</button>
+      ><button class="text-link" :disabled="saving || !selection.length" @click="selection = []; selectionMessage = ''">清空选择</button>
     </div>
+    <p v-if="selectionMessage" class="subtle-copy selection-feedback" role="status">{{ selectionMessage }}</p>
     <div
       v-if="items.length"
       :class="[
         'collection-grid',
-        { 'comic-grid': isComic, 'photo-wall': random },
+        { 'comic-grid': isComic, 'photo-wall': random, 'is-selecting': selecting },
       ]"
       :aria-busy="loading"
     >
@@ -399,7 +424,9 @@ onUnmounted(() => {
         <button
           v-else
           class="cover image-open"
-          :aria-label="'查看 ' + item.pages[0]?.name"
+          :aria-label="(selecting ? '选择 ' : '查看 ') + item.pages[0]?.name"
+          :aria-pressed="selecting ? selection.includes(item.id) : undefined"
+          :disabled="saving"
           @click="openImage(item)"
         >
           <img
@@ -418,6 +445,7 @@ onUnmounted(() => {
           ><input
             type="checkbox"
             :checked="selection.includes(item.id)"
+            :disabled="saving"
             :aria-label="'选择 ' + item.pages[0]?.name"
             @change="toggleSelect(item.id)"
         /></label>
@@ -579,12 +607,14 @@ onUnmounted(() => {
   <dialog
     ref="viewer"
     class="image-viewer"
+    @close="viewing = undefined"
+    @click="$event.target === viewer && viewer?.close()"
     @keydown.left.prevent="nextImage(-1)"
     @keydown.right.prevent="nextImage(1)"
   >
     <template v-if="viewing"
       ><header class="dialog-header">
-        <span>{{ viewerIndex + 1 }} / {{ items.length }}</span>
+        <span>{{ viewerIndex + 1 }} / {{ total }}</span>
         <div class="row-actions">
           <a
             class="button secondary small"
@@ -606,11 +636,13 @@ onUnmounted(() => {
           </button>
         </div>
       </header>
+      <p v-if="error" class="inline-error" role="alert">{{ error }}</p>
+      <p v-if="viewerMoving" class="subtle-copy" role="status">正在加载下一张…</p>
       <div class="viewer-image">
         <button
           class="icon-button"
           aria-label="上一张"
-          :disabled="viewerIndex <= 0"
+          :disabled="viewerIndex <= 0 || viewerMoving || loading"
           @click="nextImage(-1)"
         >
           <Icon name="chevron-left" /></button
@@ -623,7 +655,7 @@ onUnmounted(() => {
         <button
           class="icon-button"
           aria-label="下一张"
-          :disabled="viewerIndex >= items.length - 1"
+          :disabled="!viewerCanNext || viewerMoving || loading"
           @click="nextImage(1)"
         >
           <Icon name="chevron-right" />

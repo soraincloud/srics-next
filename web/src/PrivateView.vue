@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch, nextTick } from "vue";
 import Icon from "./Icon.vue";
+import { useGalleryNavigation } from "./gallery";
 import PrivateImage from "./PrivateImage.vue";
 import PrivateUploads from "./PrivateUploads.vue";
 import ActionConfirm from "./ActionConfirm.vue";
@@ -43,7 +44,8 @@ const items = ref<Item[]>([]),
   seed = ref(""),
   snapshot = ref(0),
   selection = ref<string[]>([]),
-  selecting = ref(false);
+  selecting = ref(false),
+  selectionMessage = ref("");
 const picker = ref<HTMLInputElement>(),
   viewer = ref<HTMLDialogElement>(),
   viewing = ref<Item>(),
@@ -51,6 +53,8 @@ const picker = ref<HTMLInputElement>(),
   editing = ref<Item>(),
   editName = ref(""),
   saving = ref(false);
+const { index: viewerIndex, moving: viewerMoving, canNext: viewerCanNext, advance: nextImage } =
+  useGalleryNavigation(items, viewing, next, loading, () => load(true));
 const controller = new AbortController();
 let loadGeneration = 0;
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
@@ -66,6 +70,7 @@ function clearPrivate() {
   items.value = [];
   total.value = 0;
   selection.value = [];
+  selectionMessage.value = "";
   selecting.value = false;
   query.value = "";
   password.value = "";
@@ -111,6 +116,7 @@ async function load(more = false) {
     seed.value = "";
     snapshot.value = 0;
     selection.value = [];
+    selectionMessage.value = "";
     selecting.value = false;
     items.value = [];
   }
@@ -154,8 +160,18 @@ function search() {
 function toggleSelectionMode() {
   selecting.value = !selecting.value;
   selection.value = [];
+  selectionMessage.value = "";
+}
+function selectLoaded() {
+  selection.value = items.value.slice(0, 100).map(item => item.id);
+  selectionMessage.value = items.value.length > 100 ? "每次最多选择 100 项，已选前 100 项。" : "";
 }
 function toggle(id: string) {
+  selectionMessage.value = "";
+  if (!selection.value.includes(id) && selection.value.length >= 100) {
+    selectionMessage.value = "每次最多选择 100 项，请先取消部分选择。";
+    return;
+  }
   if (isPhoto.value) selecting.value = true;
   selection.value = selection.value.includes(id)
     ? selection.value.filter((v) => v !== id)
@@ -328,6 +344,12 @@ onUnmounted(() => {
         ><Icon name="download" />打包下载</a
       >
     </div>
+    <div v-if="selecting || (!isPhoto && selection.length)" class="selection-bar panel">
+      <span role="status">已选 {{ selection.length }} / 100 项</span>
+      <button class="text-link" :disabled="loading || saving" @click="selectLoaded">选择已加载项</button>
+      <button class="text-link" :disabled="saving || !selection.length" @click="selection = []; selectionMessage = ''">清空选择</button>
+    </div>
+    <p v-if="selectionMessage" class="subtle-copy selection-feedback" role="status">{{ selectionMessage }}</p>
     <div
       v-if="isPhoto && !trash"
       class="private-gallery"
@@ -448,12 +470,14 @@ onUnmounted(() => {
     <dialog
       ref="viewer"
       class="private-viewer"
+      @keydown.left.prevent="nextImage(-1)"
+      @keydown.right.prevent="nextImage(1)"
       @close="viewing = undefined"
       @click="$event.target === viewer && viewer?.close()"
     >
       <template v-if="viewing"
         ><div class="private-viewer-toolbar">
-          <span>私密照片</span>
+          <span>{{ viewerIndex + 1 }} / {{ total }}</span>
           <button class="icon-button" aria-label="锁定并关闭预览" @click="lock">
             <Icon name="lock" />
           </button>
@@ -482,8 +506,12 @@ onUnmounted(() => {
         <p v-if="error" class="inline-error private-viewer-error" role="alert">
           {{ error }}
         </p>
-        <PrivateImage :key="viewing.id" :id="viewing.id" original
-      /></template>
+        <p v-if="viewerMoving" class="subtle-copy" role="status">正在加载下一张…</p>
+        <div class="private-viewer-stage">
+          <button class="icon-button" aria-label="上一张" :disabled="viewerIndex <= 0 || viewerMoving || loading" @click="nextImage(-1)"><Icon name="chevron-left" /></button>
+          <PrivateImage :key="viewing.id" :id="viewing.id" original />
+          <button class="icon-button" aria-label="下一张" :disabled="!viewerCanNext || viewerMoving || loading" @click="nextImage(1)"><Icon name="chevron-right" /></button>
+        </div></template>
     </dialog>
     <dialog
       ref="editor"
