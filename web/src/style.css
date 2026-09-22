@@ -441,7 +441,10 @@ button:disabled { opacity: .45; }
 .content-tags button, .content-tags > span { padding: 3px 9px; font-size: 10px; }
 .content-meta { display: flex; align-items: center; margin-top: 9px; }
 .content-meta > span { margin-right: auto; color: var(--muted); font-size: 11px; }
-.photo-card-meta { display: flex; align-items: center; justify-content: space-between; padding: 3px 12px; font-size: 11px; color: var(--muted); }
+.photo-card-meta { position: absolute; inset: auto 0 0; display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; padding: 28px 12px 10px; font-size: 11px; color: #fff; background: linear-gradient(transparent, rgb(0 0 0 / .6)); opacity: 0; pointer-events: none; transition: opacity .14s; }
+.photo-card-meta .photo-backup-state { color: rgb(255 255 255 / .8); }
+.photo-card-meta > a { flex-shrink: 0; color: #fff; pointer-events: none; }
+.photo-card-meta > a:hover { color: #fff; background: rgb(255 255 255 / .16); }
 /* Keep the hit target generous without placing a dark badge over the photo. */
 .card-select, .private-photo-select { position: absolute; top: 8px; left: 8px; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; background: transparent; border: 0; border-radius: 0; cursor: pointer; }
 .card-select input, .private-photo-select input { display: block; accent-color: var(--accent); cursor: pointer; width: 18px; height: 18px; margin: 0; }
@@ -640,15 +643,16 @@ dialog::backdrop { background: rgba(0,0,0,.65); backdrop-filter: blur(6px); }
 @media(max-width:680px) { .private-upload-row { align-items: stretch; gap: 8px; } .private-upload-row > span { flex-basis: auto; } }
 
 /* Photo controls appear on intent; selection stays visible without framing the image. */
-.collection-grid:not(.comic-grid) .card-select,
-.collection-grid:not(.comic-grid) .photo-card-meta > a { opacity: 0; pointer-events: none; transition: opacity .14s; }
+.collection-grid:not(.comic-grid) .card-select { opacity: 0; pointer-events: none; transition: opacity .14s; }
 .collection-grid .content-card:has(:focus-visible) .card-select,
-.collection-grid .content-card:has(:focus-visible) .photo-card-meta > a,
 .collection-grid.is-selecting .card-select,
 .collection-grid .content-card.is-selected .card-select { opacity: 1; pointer-events: auto; }
+.collection-grid .content-card:has(:focus-visible) .photo-card-meta { opacity: 1; }
+.collection-grid .content-card:has(:focus-visible) .photo-card-meta > a { pointer-events: auto; }
 @media (hover: hover) and (pointer: fine) {
-  .collection-grid .content-card:hover .card-select,
-  .collection-grid .content-card:hover .photo-card-meta > a { opacity: 1; pointer-events: auto; }
+  .collection-grid .content-card:hover .card-select { opacity: 1; pointer-events: auto; }
+  .collection-grid .content-card:hover .photo-card-meta { opacity: 1; }
+  .collection-grid .content-card:hover .photo-card-meta > a { pointer-events: auto; }
 }
 .selection-feedback { margin: -6px 0 18px; }
 .private-viewer-stage { display: flex; align-items: center; gap: 12px; }
