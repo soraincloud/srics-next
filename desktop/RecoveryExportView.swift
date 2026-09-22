@@ -53,13 +53,16 @@ struct RecoveryExportView: View {
     init(source: RecoverySource, directory: String, hasVault: Bool) { _model = StateObject(wrappedValue: RecoveryExportModel(source: source, directory: directory)); self.hasVault = hasVault }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("取回单项文件").font(.title2.weight(.semibold))
+            GlobalHeading(title: "取回单项文件", icon: "square.and.arrow.up")
             Text("从已校验的恢复副本取回文件，当前资料库保持不变。").foregroundStyle(.secondary)
             if hasVault { HStack { SecureField("备份时的保险库口令（读取私密文件）", text: $model.password); Button("读取私密目录") { model.load() } }.disabled(model.busy) }
-            TextField("按名称筛选", text: $model.filter).textFieldStyle(.roundedBorder)
+            TextField("按名称筛选", text: $model.filter).textFieldStyle(GlobalTextFieldStyle())
             List(model.filtered, selection: $model.selected) { item in HStack { Text(item.name); Spacer(); Text(item.category).foregroundStyle(.secondary) }.tag(item.id) }.disabled(model.busy)
+                .scrollContentBackground(.hidden).background(GlobalPalette.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(GlobalPalette.line, lineWidth: 1.5))
             Text(model.message).font(.callout).foregroundStyle(model.failed ? Color.red : Color.secondary).textSelection(.enabled)
             HStack { if model.busy { ProgressView().controlSize(.small); Button("取消任务") { model.cancel() } }; Spacer(); Button("关闭") { model.password = ""; dismiss() }.disabled(model.busy); Button("取回所选文件…") { model.export() }.buttonStyle(RecoveryActionStyle()).disabled(model.busy || model.selected == nil) }
-        }.padding(24).frame(width: 620, height: 560).interactiveDismissDisabled(model.busy).task { model.load() }
+        }.padding(24).frame(width: 700, height: 580).background(GlobalPalette.background).foregroundStyle(GlobalPalette.ink).tint(GlobalPalette.ink).buttonStyle(GlobalButtonStyle()).textFieldStyle(GlobalTextFieldStyle()).interactiveDismissDisabled(model.busy).task { model.load() }
     }
 }

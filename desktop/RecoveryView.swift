@@ -2,14 +2,8 @@ import SwiftUI
 import AppKit
 
 struct RecoveryActionStyle: ButtonStyle {
-    @Environment(\.isEnabled) private var enabled
-    @Environment(\.colorScheme) private var scheme
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(scheme == .dark ? Color.black : Color.white)
-            .padding(.horizontal, 12).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 6).fill(scheme == .dark ? Color.white : Color.black))
-            .opacity(enabled ? (configuration.isPressed ? 0.75 : 1) : 0.35)
+        GlobalButtonStyle(primary: true).makeBody(configuration: configuration)
     }
 }
 
@@ -168,7 +162,7 @@ struct RecoveryView: View {
     @ViewBuilder private func pathField(_ title: String, _ binding: Binding<String>, directory: Bool = false) -> some View {
         LabeledContent(title) {
             HStack {
-                TextField(title + "路径", text: binding).labelsHidden().textFieldStyle(.roundedBorder).accessibilityLabel(title + "路径")
+                TextField(title + "路径", text: binding).labelsHidden().textFieldStyle(GlobalTextFieldStyle()).accessibilityLabel(title + "路径")
                 Button("选择…") {
                     let panel = NSOpenPanel(); panel.canChooseDirectories = directory; panel.canChooseFiles = !directory
                     panel.allowsMultipleSelection = false; panel.prompt = "选择"
@@ -180,32 +174,33 @@ struct RecoveryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Image(systemName: "arrow.counterclockwise").font(.title2)
-                Text("从备份恢复").font(.title2.weight(.semibold))
+                GlobalHeading(title: "从备份恢复", icon: "arrow.counterclockwise")
                 Spacer()
                 Text(model.step == 0 ? "1 · 备份来源" : model.step == 1 ? "2 · 恢复位置" : "3 · 恢复结果").font(.caption).foregroundStyle(.secondary)
             }.padding(24)
             Divider()
             if model.step == 0 {
-                Form {
-                    Section("备份来源") {
-                        Picker("存储类型", selection: $model.source.target) { Text("本地 / 独立硬盘").tag("local"); Text("云端 S3").tag("cloud") }
-                        if model.source.target == "local" {
-                            pathField("备份目录", $model.source.repository, directory: true)
-                            pathField("备份口令文件", $model.source.passwordFile)
-                        } else {
-                            TextField("Endpoint", text: $model.source.cloud.connection.endpoint)
-                            TextField("区域", text: $model.source.cloud.connection.region)
-                            TextField("存储桶", text: $model.source.cloud.connection.bucket)
-                            TextField("专用前缀", text: $model.source.cloud.connection.prefix)
-                            Picker("寻址方式", selection: $model.source.cloud.connection.lookup) { Text("自动").tag("auto"); Text("Path").tag("path"); Text("DNS（OSS）").tag("dns") }
-                            pathField("凭据 JSON", $model.source.cloud.credentialsFile)
-                            pathField("备份口令文件", $model.source.cloud.passwordFile)
-                            pathField("自定义 CA（可选）", $model.source.cloud.connection.caFile)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        GlobalCard("备份来源", icon: "externaldrive") {
+                            Picker("存储类型", selection: $model.source.target) { Text("本地 / 独立硬盘").tag("local"); Text("云端 S3").tag("cloud") }
+                            if model.source.target == "local" {
+                                pathField("备份目录", $model.source.repository, directory: true)
+                                pathField("备份口令文件", $model.source.passwordFile)
+                            } else {
+                                TextField("Endpoint", text: $model.source.cloud.connection.endpoint)
+                                TextField("区域", text: $model.source.cloud.connection.region)
+                                TextField("存储桶", text: $model.source.cloud.connection.bucket)
+                                TextField("专用前缀", text: $model.source.cloud.connection.prefix)
+                                Picker("寻址方式", selection: $model.source.cloud.connection.lookup) { Text("自动").tag("auto"); Text("Path").tag("path"); Text("DNS（OSS）").tag("dns") }
+                                pathField("凭据 JSON", $model.source.cloud.credentialsFile)
+                                pathField("备份口令文件", $model.source.cloud.passwordFile)
+                                pathField("自定义 CA（可选）", $model.source.cloud.connection.caFile)
+                            }
                         }
-                    }
-                    Text("填写备份时使用的连接信息和独立备份口令文件（权限 600）。这些设置仅用于本次恢复。").font(.caption).foregroundStyle(.secondary)
-                }.formStyle(.grouped).disabled(model.busy)
+                        Text("填写备份时使用的连接信息和独立备份口令文件（权限 600）。这些设置仅用于本次恢复。").font(.caption).foregroundStyle(.secondary)
+                    }.padding(24)
+                }.disabled(model.busy)
             } else if model.step == 1 {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("选择恢复点").font(.headline)
@@ -215,7 +210,9 @@ struct RecoveryView: View {
                             Text(entry.id).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
                             if let bytes = entry.bytes { Text(ByteCountFormatter.string(fromByteCount: Int64(clamping: bytes), countStyle: .file)).font(.caption).foregroundStyle(.secondary) }
                         }.padding(.vertical, 6).tag(entry.id)
-                    }.frame(minHeight: 160)
+                    }.frame(minHeight: 160).scrollContentBackground(.hidden)
+                    .background(GlobalPalette.surface).clipShape(RoundedRectangle(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(GlobalPalette.line, lineWidth: 1.5))
                     HStack { Text("恢复到新目录").font(.headline); Spacer(); Button("选择存放位置…") { model.chooseDestination() } }
                     Text(model.directory.isEmpty ? "选择磁盘上的存放位置，将自动生成一个新目录。" : model.directory).font(.callout).foregroundStyle(.secondary).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                     Text("恢复后自动校验。原资料保持不变，云端恢复可能产生下载费用。").font(.caption).foregroundStyle(.secondary)
@@ -246,7 +243,9 @@ struct RecoveryView: View {
                     else if !model.activated { Button("停止服务并启用") { model.perform("recovery-activate") }.disabled(model.busy).buttonStyle(RecoveryActionStyle()) }
                 }
             }.padding(24)
-        }.frame(width: 620, height: 680).interactiveDismissDisabled(model.busy)
+        }.frame(width: 740, height: 700).background(GlobalPalette.background).foregroundStyle(GlobalPalette.ink)
+        .tint(GlobalPalette.ink).buttonStyle(GlobalButtonStyle()).textFieldStyle(GlobalTextFieldStyle())
+        .interactiveDismissDisabled(model.busy)
         .sheet(isPresented: $showExport) { if let result = model.result { RecoveryExportView(source: model.source, directory: result.directory, hasVault: result.vaultPresent) } }
     }
 }
