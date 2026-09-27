@@ -24,7 +24,7 @@ import (
 	"github.com/soraincloud/srics-next/internal/webui"
 )
 
-var version = "0.3.0-rc2"
+var version = "0.3.0-rc3"
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -112,14 +112,10 @@ func run(args []string) error {
 		ip := net.ParseIP(host)
 		var tlsConfig *tls.Config
 		if savedConfig != nil && savedConfig.LANAddress != "" {
-			if err := localtls.Ensure(tlsDirectory(*config), host); err != nil {
-				return err
-			}
-			cert, _, err := localtls.Load(tlsDirectory(*config), host)
+			tlsConfig, err = localtls.ServerConfig(tlsDirectory(*config), host)
 			if err != nil {
 				return err
 			}
-			tlsConfig = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13}
 		} else if host != "localhost" && (ip == nil || !ip.IsLoopback()) {
 			return errors.New("局域网访问需在本机程序中配置 HTTPS")
 		}
@@ -156,14 +152,17 @@ func run(args []string) error {
 			app.StartMaintenance(savedConfig.TrashDays, savedConfig.Retention)
 			app.StartBackupSchedule(savedConfig.BackupDailyAt)
 		}
-		srv := &http.Server{Handler: app, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
+		srv := &http.Server{Handler: app, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10, BaseContext: func(net.Listener) context.Context { return ctx }}
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
 			<-ctx.Done()
 			stop, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			srv.Shutdown(stop)
+			if srv.Shutdown(stop) != nil {
+				// Close stalled client connections after the graceful deadline.
+				_ = srv.Close()
+			}
 		}()
 		scheme := "http"
 		if tlsConfig != nil {

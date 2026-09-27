@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/soraincloud/srics-next/internal/atomicfile"
 	"github.com/soraincloud/srics-next/internal/backup"
 	"github.com/soraincloud/srics-next/internal/library"
 	"github.com/soraincloud/srics-next/internal/localtls"
@@ -184,7 +185,7 @@ func writeConfig(path string, c localConfig) error {
 	if _, err = f.Write(append(b, '\n')); err != nil {
 		return err
 	}
-	if err = f.Sync(); err != nil {
+	if err = atomicfile.Sync(f); err != nil {
 		return err
 	}
 	if err = f.Close(); err != nil {

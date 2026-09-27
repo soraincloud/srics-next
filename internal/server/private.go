@@ -156,12 +156,19 @@ func (a *LibraryAPI) privateAPI(w http.ResponseWriter, r *http.Request, parts []
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 	body := r.Body
+	if timed, ok := body.(*timedBody); ok {
+		timed.ctx = ctx
+	}
 	response := http.NewResponseController(w)
 	done := make(chan struct{})
 	stopped := context.AfterFunc(leaseCtx, func() {
 		defer close(done)
 		cancel()
-		_ = response.SetReadDeadline(time.Now())
+		if timed, ok := body.(*timedBody); ok {
+			timed.stopRead()
+		} else {
+			_ = response.SetReadDeadline(time.Now())
+		}
 		_ = response.SetWriteDeadline(time.Now())
 		body.Close()
 	})

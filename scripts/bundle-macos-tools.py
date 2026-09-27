@@ -1,4 +1,4 @@
-"""Copy Homebrew executables, their non-system dylibs and license notices."""
+"""Bundle the pinned restic build and Homebrew image tools with their notices."""
 import json
 import pathlib
 import shutil
@@ -65,10 +65,11 @@ def bundle(source):
     return dest
 
 for name in ['cwebp', 'restic']:
-    source = shutil.which(name)
+    source = pathlib.Path('bin/tools/restic').resolve() if name == 'restic' else shutil.which(name)
     if not source:
         raise RuntimeError(f'Missing build tool: {name}')
     bundle(source)
+shutil.copytree('bin/tools/restic-licenses', resources / 'licenses' / 'restic-audited', dirs_exist_ok=True)
 for binary in target.iterdir():
     if binary.is_file():
         linked = output('otool', '-L', str(binary))

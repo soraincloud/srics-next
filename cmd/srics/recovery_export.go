@@ -103,16 +103,7 @@ func exportRecovery(ctx context.Context, l *library.Library, a *vault.Access, id
 		}
 		name = it.Name
 		copyPage := func(w io.Writer, p library.Page) error {
-			if !library.IDPattern.MatchString(p.Object) {
-				return errors.New("文件引用无效")
-			}
-			r, err := os.Open(l.ObjectPath(p.Object))
-			if err != nil {
-				return err
-			}
-			defer r.Close()
-			_, err = io.Copy(w, vault.ContextReader{Ctx: ctx, Reader: r})
-			return err
+			return l.CopyOriginal(ctx, p, w)
 		}
 		switch it.Module {
 		case "novels":

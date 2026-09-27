@@ -1,12 +1,12 @@
 module github.com/soraincloud/srics-next
 
-go 1.26.5
+go 1.27.1
 
 require (
 	filippo.io/age v1.3.2
 	github.com/mattn/go-sqlite3 v1.14.52
 	github.com/minio/minio-go/v7 v7.3.0
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.56.0
 	golang.org/x/image v0.46.0
 	golang.org/x/sys v0.48.0
 )

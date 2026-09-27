@@ -46,6 +46,7 @@ func (s *Server) Wait() {
 	}
 }
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	limitBodyTime(w, r)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")

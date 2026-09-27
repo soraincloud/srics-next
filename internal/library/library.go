@@ -10,7 +10,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/url"
 	"os"
@@ -20,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/mattn/go-sqlite3"
 	"github.com/soraincloud/srics-next/internal/atomicfile"
 	"golang.org/x/sys/unix"
 )
@@ -31,6 +30,14 @@ const MaxFile = 64 << 20
 var IDPattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
 var ErrConflict = errors.New("资料已变化，请刷新后重试")
 var ErrMissing = errors.New("找不到这项资料")
+
+func init() {
+	// Apply on every new connection, including after a connection is replaced.
+	sql.Register("srics-sqlite3", &sqlite3.SQLiteDriver{ConnectHook: func(c *sqlite3.SQLiteConn) error {
+		_, err := c.Exec("PRAGMA fullfsync=ON; PRAGMA checkpoint_fullfsync=ON", nil)
+		return err
+	}})
+}
 
 type Library struct {
 	Root       string
@@ -154,7 +161,7 @@ func Open(root string) (*Library, error) {
 		}
 	}()
 	u := url.URL{Scheme: "file", Path: filepath.Join(root, "index.db")}
-	db, err := sql.Open("sqlite3", u.String()+"?mode=rw&_journal_mode=WAL&_synchronous=FULL&_foreign_keys=on&_busy_timeout=5000")
+	db, err := sql.Open("srics-sqlite3", u.String()+"?mode=rw&_journal_mode=WAL&_synchronous=FULL&_foreign_keys=on&_busy_timeout=5000")
 	if err != nil {
 		return nil, err
 	}
@@ -337,6 +344,9 @@ func (l *Library) Items(module string, trash bool) ([]Item, error) {
 		if err = json.Unmarshal([]byte(pages), &it.Pages); err != nil {
 			return nil, err
 		}
+		if err = it.validate(); err != nil {
+			return nil, err
+		}
 		items = append(items, it)
 	}
 	return items, rows.Err()
@@ -357,8 +367,10 @@ func (l *Library) Item(id string) (Item, error) {
 	if err = json.Unmarshal([]byte(tags), &it.Tags); err != nil {
 		return it, err
 	}
-	err = json.Unmarshal([]byte(pages), &it.Pages)
-	return it, err
+	if err = json.Unmarshal([]byte(pages), &it.Pages); err != nil {
+		return it, err
+	}
+	return it, it.validate()
 }
 func CleanName(name string) (string, error) {
 	name = strings.TrimSpace(name)
@@ -569,6 +581,12 @@ func (l *Library) Snapshot(ctx context.Context, dest string) error {
 	return nil
 }
 func (l *Library) Verify(ctx context.Context) error {
+	if err := l.checkIndex(ctx); err != nil {
+		return err
+	}
+	return l.verifyObjects(ctx)
+}
+func (l *Library) checkIndex(ctx context.Context) error {
 	if err := l.Check(); err != nil {
 		return err
 	}
@@ -592,6 +610,10 @@ func (l *Library) Verify(ctx context.Context) error {
 	if bad {
 		return errors.New("资料索引包含无效关联")
 	}
+	return nil
+}
+func (l *Library) verifyObjects(ctx context.Context) error {
+	var err error
 	pages := map[string]Page{}
 	for _, trash := range []bool{false, true} {
 		items, err := l.Items("all", trash)
@@ -622,20 +644,17 @@ func (l *Library) Verify(ctx context.Context) error {
 		if err = ctx.Err(); err != nil {
 			return err
 		}
-		f, e := os.Open(l.ObjectPath(p.Object))
+		f, e := l.OpenOriginal(ctx, p)
 		if e != nil {
 			return e
 		}
-		h := sha256.New()
-		n, e := io.Copy(h, f)
 		f.Close()
-		if e != nil || n != p.Size || hex.EncodeToString(h.Sum(nil)) != p.SHA256 {
-			return fmt.Errorf("文件校验失败：%s", p.Object)
-		}
 		if p.Thumb != "" {
-			if _, e = os.Stat(l.ObjectPath(p.Thumb)); e != nil {
+			thumb, e := l.OpenObject(p.Thumb)
+			if e != nil {
 				return e
 			}
+			thumb.Close()
 		}
 	}
 	if err := l.verifyChunks(ctx); err != nil {

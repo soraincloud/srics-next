@@ -46,7 +46,7 @@ func (l *Library) StorageUsage() (StorageUsage, error) {
 	return out, nil
 }
 func (l *Library) collectLocked() error {
-	if err := l.Check(); err != nil {
+	if err := l.checkIndex(context.Background()); err != nil {
 		return err
 	}
 	refs := map[string]map[string]bool{"objects": {}, "private-objects": {}, "chunks": {}}
@@ -102,6 +102,14 @@ func (l *Library) collectLocked() error {
 	rows.Close()
 	if err != nil {
 		return err
+	}
+	// Validate every reference before deleting anything in any directory.
+	for _, keep := range refs {
+		for id := range keep {
+			if id != "" && !IDPattern.MatchString(id) {
+				return errors.New("文件引用损坏，已停止清理，请从备份恢复")
+			}
+		}
 	}
 	for dir, keep := range refs {
 		entries, err := os.ReadDir(filepath.Join(l.Root, dir))

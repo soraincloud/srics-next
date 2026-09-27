@@ -2,6 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ./scripts/build.sh
+export PATH="$PWD/bin/tools:$PATH"
 npm --prefix web test
 go vet ./...
 go test -race ./...

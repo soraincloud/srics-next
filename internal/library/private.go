@@ -121,6 +121,9 @@ func (l *Library) privateRows() ([]privateRow, error) {
 		if err = rows.Scan(&r.id, &r.seq, &r.payload, &r.object, &r.thumb, &r.hash, &r.thumbHash); err != nil {
 			return nil, err
 		}
+		if !IDPattern.MatchString(r.id) || !IDPattern.MatchString(r.object) || !validHash(r.hash) || len(r.payload) == 0 || (r.thumb == "" && r.thumbHash != "") || (r.thumb != "" && (!IDPattern.MatchString(r.thumb) || !validHash(r.thumbHash))) {
+			return nil, errors.New("私密文件索引损坏，已停止清理，请从备份恢复")
+		}
 		out = append(out, r)
 	}
 	return out, rows.Err()

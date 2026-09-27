@@ -34,8 +34,10 @@ func (l *Library) Upload(id string) (Upload, error) {
 	if err != nil {
 		return up, err
 	}
-	err = json.Unmarshal(data, &up)
-	return up, err
+	if err = json.Unmarshal(data, &up); err != nil {
+		return up, err
+	}
+	return up, up.validate()
 }
 func (l *Library) Uploads() ([]Upload, error) {
 	if err := l.Check(); err != nil {
@@ -56,9 +58,30 @@ func (l *Library) Uploads() ([]Upload, error) {
 		if err = json.Unmarshal(b, &up); err != nil {
 			return nil, err
 		}
+		if err = up.validate(); err != nil {
+			return nil, err
+		}
 		out = append(out, up)
 	}
 	return out, rows.Err()
+}
+func (up Upload) validate() error {
+	if !IDPattern.MatchString(up.ID) || !ValidModule(up.Module) || up.Module == "novels" || len(up.Files) < 1 || len(up.Files) > 3000 {
+		return errors.New("上传索引损坏，已停止清理，请从备份恢复")
+	}
+	if up.State != "pending" && up.State != "failed" && up.State != "complete" && up.State != "cancelled" {
+		return errors.New("上传状态损坏，已停止清理，请从备份恢复")
+	}
+	for _, f := range up.Files {
+		if f.Page != nil {
+			if err := f.Page.validate(); err != nil {
+				return err
+			}
+		} else if up.State == "complete" {
+			return errors.New("已完成的上传缺少文件引用，已停止清理")
+		}
+	}
+	return nil
 }
 func (l *Library) saveUpload(up Upload) error {
 	data, err := json.Marshal(up)

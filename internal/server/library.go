@@ -148,13 +148,6 @@ func (a *LibraryAPI) auth(w http.ResponseWriter, r *http.Request) bool {
 			apiError(w, 403, errors.New("无效请求"))
 			return false
 		}
-		a.loginMu.Lock()
-		defer a.loginMu.Unlock()
-		if time.Now().Before(a.nextLogin) {
-			w.Header().Set("Retry-After", "5")
-			apiError(w, 429, errors.New("尝试过于频繁，请稍后再试"))
-			return false
-		}
 		var body struct {
 			Password string `json:"password"`
 		}
@@ -163,6 +156,14 @@ func (a *LibraryAPI) auth(w http.ResponseWriter, r *http.Request) bool {
 		}
 		if len(body.Password) > 72 {
 			apiError(w, 400, errors.New("密码最长 72 字节"))
+			return false
+		}
+		// Never hold the shared login lock while waiting for network input.
+		a.loginMu.Lock()
+		defer a.loginMu.Unlock()
+		if time.Now().Before(a.nextLogin) {
+			w.Header().Set("Retry-After", "5")
+			apiError(w, 429, errors.New("尝试过于频繁，请稍后再试"))
 			return false
 		}
 		hash, err := a.store.Setting("password")
@@ -511,9 +512,14 @@ func (a *LibraryAPI) page(w http.ResponseWriter, r *http.Request, id, n string) 
 		apiError(w, 415, errors.New("此格式请下载原件查看"))
 		return
 	}
-	f, err := os.Open(a.store.ObjectPath(obj))
+	var f *os.File
+	if obj == p.Object {
+		f, err = a.store.OpenOriginal(r.Context(), p)
+	} else {
+		f, err = a.store.OpenObject(obj)
+	}
 	if err != nil {
-		apiError(w, 503, errors.New("原件暂时无法读取"))
+		apiError(w, 503, err)
 		return
 	}
 	defer f.Close()
@@ -540,9 +546,9 @@ func (a *LibraryAPI) download(w http.ResponseWriter, r *http.Request, id string)
 		return
 	}
 	p := it.Pages[0]
-	f, err := os.Open(a.store.ObjectPath(p.Object))
+	f, err := a.store.OpenOriginal(r.Context(), p)
 	if err != nil {
-		apiError(w, 503, errors.New("原件暂时无法读取"))
+		apiError(w, 503, err)
 		return
 	}
 	defer f.Close()
@@ -579,8 +585,8 @@ func (a *LibraryAPI) zip(w http.ResponseWriter, r *http.Request, items []library
 	// a second full copy on disk. A midstream I/O failure terminates the response.
 	for _, it := range items {
 		for _, p := range it.Pages {
-			info, err := os.Stat(a.store.ObjectPath(p.Object))
-			if err != nil || info.Size() != p.Size {
+			info, err := os.Lstat(a.store.ObjectPath(p.Object))
+			if err != nil || !info.Mode().IsRegular() || info.Size() != p.Size {
 				apiError(w, 503, errors.New("文件缺失或大小异常，请检查资料盘"))
 				return
 			}
@@ -611,12 +617,7 @@ func (a *LibraryAPI) zip(w http.ResponseWriter, r *http.Request, items []library
 			if err != nil {
 				panic(http.ErrAbortHandler)
 			}
-			f, err := os.Open(a.store.ObjectPath(p.Object))
-			if err != nil {
-				panic(http.ErrAbortHandler)
-			}
-			_, err = io.Copy(out, f)
-			f.Close()
+			err = a.store.CopyOriginal(r.Context(), p, out)
 			if err != nil || r.Context().Err() != nil {
 				panic(http.ErrAbortHandler)
 			}

@@ -2,9 +2,11 @@
 
 轻量个人资料库，用于局域网文件管理、独立加密保险库与可验证的加密备份。
 
-**当前版本：0.3.0-rc2，可进入功能验收。六类资料、分块续传、回收站清理、加密备份保留与恢复、本机自启和更新前保护已接入。**
+**当前版本：0.3.0-rc3。六类资料、分块续传、回收站清理、加密备份保留与恢复、本机自启和更新前保护已接入。正式作为主资料库前，必须完成目标 Mac 与真实云端的恢复验收。**
 
 新增[独立恢复密钥](docs/RECOVERY_KEY.md)：在部署 App 中生成、导出并验证；遗失日常密码后，可从备份取回普通与私密资料，并为恢复副本设置新密码。
+
+本轮[安全与长期保存检查](docs/SECURITY_2026-09-28.md)修复原件读取校验、异常索引下的清理保护、慢请求阻塞、持续运行的 HTTPS 续期，并升级服务和随包备份工具的安全依赖。
 
 先看 [验收清单](docs/ACCEPTANCE.md) 与 [开发验证记录](docs/RELEASE_READINESS.md)。实际云账号、独立硬盘、异机恢复和 100 GB 真实规模仍需部署验收。
 
@@ -14,15 +16,17 @@
 
 本机程序（macOS）：双击 `dist/SRICS Next.app`，在窗口中设置登录密码、独立保险库口令、资料目录和可选备份配置，点击“保存并启动”。之后一键启动、停止或打开资料库。关闭窗口不会停止后台服务；网页只保留登录，没有密码创建入口。
 
-从源码构建（当前机器架构，需要 Go 1.26.5+、Node.js 22.12+ 或 24+、Xcode Command Line Tools）：
+从源码构建（当前机器架构，需要 Go 1.27.1 或支持自动下载该工具链的 Go、Node.js 22.12+ 或 24+、Python 3、Xcode Command Line Tools）：
 
 ```sh
-brew install webp restic
+brew install webp
 ./scripts/package-macos.sh
 ./start.command
 ```
 
 程序包内含前端、Go 服务、cwebp、restic 及其动态库。构建完成后运行不需要 Go、Node.js 或 Homebrew；`start.command` 也可直接打开配置窗口。当前是本机构建、临时签名的开发包，尚未完成 Apple 公证或其他设备兼容性验收。
+
+restic 从固定的 0.19.1 源码与 `scripts/restic/` 中的依赖清单构建，不修改系统 Homebrew。备份格式保持兼容；源码校验值、依赖和许可证随包附带。发布前运行 `bash scripts/check-security.sh`，分别扫描应用与备份工具，避免只检查主程序。
 
 默认资料目录为 `~/Library/Application Support/SRICS Next/library`，已有资料和密码会沿用。完整操作与后台管理说明见 [本机启动程序](docs/LOCAL_LAUNCHER.md)。默认仅监听 `127.0.0.1`；局域网模式使用 HTTPS，首次访问需要安装、信任导出的公共证书，见 [M5 部署配置](docs/M5_DEPLOYMENT.md)。
 

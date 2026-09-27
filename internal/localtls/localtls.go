@@ -55,7 +55,7 @@ func write(path string, data []byte) error {
 	if _, err = f.Write(data); err != nil {
 		return err
 	}
-	if err = f.Sync(); err != nil {
+	if err = atomicfile.Sync(f); err != nil {
 		return err
 	}
 	if err = f.Close(); err != nil {
@@ -96,7 +96,7 @@ func issue(template, parent *x509.Certificate, signer *ecdsa.PrivateKey) ([]byte
 	return append(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: private})...), nil
 }
 
-// Ensure creates a CA once and renews the server certificate on save/start.
+// Ensure creates a CA once and renews the server certificate when necessary.
 // An incomplete or damaged existing authority is an error, never a silent rotation.
 func Ensure(dir, host string) error {
 	ip := net.ParseIP(host)

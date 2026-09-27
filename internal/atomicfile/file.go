@@ -19,7 +19,7 @@ func WriteNew(path string, write func(io.Writer) error) error {
 	if err = write(f); err != nil {
 		return err
 	}
-	if err = f.Sync(); err != nil {
+	if err = Sync(f); err != nil {
 		return err
 	}
 	if err = f.Close(); err != nil {
