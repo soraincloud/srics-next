@@ -24,7 +24,7 @@ import (
 	"github.com/soraincloud/srics-next/internal/webui"
 )
 
-var version = "0.3.0-rc1"
+var version = "0.3.0-rc2"
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {

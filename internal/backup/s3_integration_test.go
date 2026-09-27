@@ -243,9 +243,25 @@ func TestS3EncryptedBackupAndIndependentRestore(t *testing.T) {
 	if err = c.Check(ctx); err != nil {
 		t.Fatal("check", err)
 	}
+	repositoryID, err := c.RepositoryID(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recoverySecret := "synthetic-independent-recovery-secret-256"
+	if err = c.AddRecoveryPassword(ctx, recoverySecret, repositoryID); err != nil {
+		t.Fatal("S3 recovery key", err)
+	}
+	if err = c.AddRecoveryPassword(ctx, recoverySecret, repositoryID); err != nil {
+		t.Fatal("S3 retry recovery key", err)
+	}
+	recovery := c
+	recovery.Password = recoverySecret
+	if got, e := recovery.RepositoryID(ctx); e != nil || got != repositoryID {
+		t.Fatal("S3 recovery-only unlock", e)
+	}
 	fixture.mu.Lock()
 	for _, b := range fixture.objects {
-		if bytes.Contains(b, plain) || bytes.Contains(b, []byte("synthetic-secret-name.txt")) {
+		if bytes.Contains(b, plain) || bytes.Contains(b, []byte("synthetic-secret-name.txt")) || bytes.Contains(b, []byte(recoverySecret)) {
 			t.Fatal("plaintext uploaded to S3")
 		}
 	}
@@ -254,7 +270,7 @@ func TestS3EncryptedBackupAndIndependentRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	restored := filepath.Join(root, "restored")
-	if err = c.Restore(ctx, id, restored); err != nil {
+	if err = recovery.Restore(ctx, id, restored); err != nil {
 		t.Fatal("restore", err)
 	}
 	b, err := os.ReadFile(filepath.Join(restored, "synthetic-secret-name.txt"))

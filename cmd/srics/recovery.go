@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -23,19 +24,22 @@ import (
 const recoveryReceipt = ".srics-recovery.json"
 
 type recoverySource struct {
-	Target       string      `json:"target"`
-	Repository   string      `json:"repository"`
-	PasswordFile string      `json:"passwordFile"`
-	Cloud        cloudConfig `json:"cloud"`
+	RecoveryKeyFile string      `json:"recoveryKeyFile"`
+	Target          string      `json:"target"`
+	Repository      string      `json:"repository"`
+	PasswordFile    string      `json:"passwordFile"`
+	Cloud           cloudConfig `json:"cloud"`
 }
 type recoveryRequest struct {
-	VaultPassword   string         `json:"vaultPassword"`
-	ItemID          string         `json:"itemID"`
-	Private         bool           `json:"private"`
-	ExportDirectory string         `json:"exportDirectory"`
-	Source          recoverySource `json:"source"`
-	Snapshot        string         `json:"snapshot"`
-	Directory       string         `json:"directory"`
+	NewPassword      string         `json:"newPassword"`
+	NewVaultPassword string         `json:"newVaultPassword"`
+	VaultPassword    string         `json:"vaultPassword"`
+	ItemID           string         `json:"itemID"`
+	Private          bool           `json:"private"`
+	ExportDirectory  string         `json:"exportDirectory"`
+	Source           recoverySource `json:"source"`
+	Snapshot         string         `json:"snapshot"`
+	Directory        string         `json:"directory"`
 }
 type recoveryResult struct {
 	Version      int       `json:"version"`
@@ -46,14 +50,19 @@ type recoveryResult struct {
 	VaultPresent bool      `json:"vaultPresent"`
 }
 type recoveryResponse struct {
-	Items     []recoveryItem    `json:"items,omitempty"`
-	Exported  string            `json:"exported,omitempty"`
-	Snapshots []backup.Snapshot `json:"snapshots,omitempty"`
-	Result    *recoveryResult   `json:"result,omitempty"`
-	Activated bool              `json:"activated"`
+	RecoveryKeyID  string            `json:"recoveryKeyID,omitempty"`
+	PasswordsReset bool              `json:"passwordsReset"`
+	Items          []recoveryItem    `json:"items,omitempty"`
+	Exported       string            `json:"exported,omitempty"`
+	Snapshots      []backup.Snapshot `json:"snapshots,omitempty"`
+	Result         *recoveryResult   `json:"result,omitempty"`
+	Activated      bool              `json:"activated"`
 }
 
-func (s recoverySource) client(binary string) (backup.Client, error) {
+func (s recoverySource) client(ctx context.Context, binary string) (backup.Client, error) {
+	if s.RecoveryKeyFile != "" {
+		return s.recoveryKeyClient(ctx, binary)
+	}
 	if s.Target == "cloud" {
 		s.Cloud.Enabled = true
 		return configuredCloud(localConfig{Cloud: s.Cloud}, binary)
@@ -230,7 +239,9 @@ func recoveryManager(ctx context.Context, action, path, binary string, input io.
 	}
 	var response recoveryResponse
 	var err error
-	if action == "recovery-items" || action == "recovery-export" {
+	if action == "recovery-reset-passwords" {
+		response, err = resetRecoveryPasswords(ctx, path, request)
+	} else if action == "recovery-items" || action == "recovery-export" {
 		response, err = recoveryExportRequest(ctx, path, request)
 	} else if action == "recovery-activate" {
 		response.Result, err = activateRecovery(ctx, path, request.Directory)
@@ -252,9 +263,16 @@ func recoveryManager(ctx context.Context, action, path, binary string, input io.
 			}
 		}
 	} else {
-		client, e := request.Source.client(binary)
+		client, e := request.Source.client(ctx, binary)
 		if e != nil {
 			return e
+		}
+		if request.Source.RecoveryKeyFile != "" {
+			key, e := readRecoveryKey(request.Source.RecoveryKeyFile)
+			if e != nil {
+				return e
+			}
+			response.RecoveryKeyID = key.ID
 		}
 		switch action {
 		case "recovery-snapshots":
@@ -263,6 +281,21 @@ func recoveryManager(ctx context.Context, action, path, binary string, input io.
 			defer cancel()
 			response.Snapshots, err = client.LibrarySnapshots(ctx)
 		case "recovery-restore":
+			if response.RecoveryKeyID != "" {
+				snapshots, e := client.LibrarySnapshots(ctx)
+				if e != nil {
+					return e
+				}
+				supported := false
+				for _, snapshot := range snapshots {
+					if snapshot.ID == request.Snapshot && slices.Contains(snapshot.RecoveryKeys, response.RecoveryKeyID) {
+						supported = true
+					}
+				}
+				if !supported {
+					return errors.New("此恢复点未记录所选恢复密钥，请选择标记为支持的恢复点")
+				}
+			}
 			c, _, e := loadConfig(path)
 			if e != nil {
 				return e

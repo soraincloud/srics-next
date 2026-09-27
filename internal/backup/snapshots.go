@@ -7,6 +7,7 @@ import (
 	"errors"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -24,10 +25,11 @@ func (w *limitedOutput) Write(p []byte) (int, error) {
 }
 
 type Snapshot struct {
-	ID    string    `json:"id"`
-	Time  time.Time `json:"time"`
-	Files *uint64   `json:"files,omitempty"`
-	Bytes *uint64   `json:"bytes,omitempty"`
+	RecoveryKeys []string  `json:"recoveryKeys,omitempty"`
+	ID           string    `json:"id"`
+	Time         time.Time `json:"time"`
+	Files        *uint64   `json:"files,omitempty"`
+	Bytes        *uint64   `json:"bytes,omitempty"`
 }
 
 // LibrarySnapshots exposes only metadata, never backup paths, usernames or tags.
@@ -63,6 +65,11 @@ func decodeSnapshots(data []byte) ([]Snapshot, error) {
 		}
 		seen[v.ID] = true
 		s := Snapshot{ID: v.ID, Time: v.Time}
+		for _, tag := range v.Tags {
+			if id, ok := strings.CutPrefix(tag, "recovery-key:"); ok && snapshotID.MatchString(id) {
+				s.RecoveryKeys = append(s.RecoveryKeys, id)
+			}
+		}
 		if v.Summary != nil {
 			s.Files, s.Bytes = v.Summary.Files, v.Summary.Bytes
 		}

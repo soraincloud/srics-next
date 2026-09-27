@@ -176,7 +176,12 @@ func recoveryExportRequest(ctx context.Context, path string, req recoveryRequest
 		return out, err
 	}
 	defer l.Close()
-	a, err := recoveryAccess(ctx, l, req.VaultPassword)
+	var a *vault.Access
+	if req.Source.RecoveryKeyFile != "" {
+		a, err = recoveryKeyAccess(ctx, l, req.Source.RecoveryKeyFile)
+	} else {
+		a, err = recoveryAccess(ctx, l, req.VaultPassword)
+	}
 	if err != nil {
 		return out, err
 	}

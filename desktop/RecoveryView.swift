@@ -8,6 +8,7 @@ struct RecoveryActionStyle: ButtonStyle {
 }
 
 struct BackupSnapshot: Decodable, Identifiable, Sendable {
+    var recoveryKeys: [String]?
     var id: String
     var time: String
     var files: UInt64?
@@ -19,6 +20,7 @@ struct BackupSnapshot: Decodable, Identifiable, Sendable {
     }
 }
 struct RecoverySource: Codable, Equatable, Sendable {
+    var recoveryKeyFile = ""
     var target = "local"
     var repository = ""
     var passwordFile = ""
@@ -36,6 +38,8 @@ struct RecoveryRequest: Encodable, Sendable {
     var itemID = ""
     var `private` = false
     var exportDirectory = ""
+    var newPassword = ""
+    var newVaultPassword = ""
 }
 struct RecoveryResult: Decodable, Sendable {
     let snapshot: String
@@ -44,6 +48,8 @@ struct RecoveryResult: Decodable, Sendable {
     let vaultPresent: Bool
 }
 struct RecoveryResponse: Decodable, Sendable {
+    var recoveryKeyID: String?
+    var passwordsReset: Bool?
     var items: [RecoveredItem]?
     var exported: String?
     var snapshots: [BackupSnapshot]?
@@ -108,8 +114,12 @@ final class RecoveryProcess: @unchecked Sendable {
     @Published var message = ""
     @Published var result: RecoveryResult?
     @Published var activated = false
+    @Published var recoveryKeyID = ""
+    @Published var passwordsReset = false
     private var command: RecoveryProcess?
     init(config: LocalConfig) { source = RecoverySource(config: config) }
+    func supports(_ entry: BackupSnapshot) -> Bool { source.recoveryKeyFile.isEmpty || (entry.recoveryKeys ?? []).contains(recoveryKeyID) }
+    var canRestore: Bool { snapshots.contains { $0.id == snapshot && supports($0) } }
     func perform(_ action: String) {
         guard !busy else { return }
         if action == "recovery-restore" && (snapshot == nil || directory.isEmpty) { return }
@@ -124,11 +134,12 @@ final class RecoveryProcess: @unchecked Sendable {
                     return try process.run(action, payload: payload, as: RecoveryResponse.self)
                 }.value
                 if action == "recovery-snapshots" {
-                    snapshots = response.snapshots ?? []; snapshot = snapshots.first?.id
+                    recoveryKeyID = response.recoveryKeyID ?? ""
+                    snapshots = response.snapshots ?? []; snapshot = snapshots.first(where: { supports($0) })?.id
                     step = 1; message = snapshots.isEmpty ? "这个目标还没有资料库快照。" : ""
                 } else {
                     result = response.result; activated = response.activated; step = 2
-                    message = activated ? "已切换资料库。关闭此窗口后启动服务，使用备份时的登录密码。" : "恢复完成，索引与文件校验通过。"
+                    message = activated ? "已切换资料库。关闭此窗口后启动服务，使用\(passwordsReset ? "刚设置的" : "备份时的")登录密码。" : "恢复完成，索引与文件校验通过。"
                 }
             } catch { failed = true; message = error.localizedDescription }
             command = nil; busy = false; AppDelegate.recoveryBusy = false
@@ -155,6 +166,8 @@ struct RecoveryView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var model: RecoveryModel
     @State private var showExport = false
+    @State private var showReset = false
+    @State private var useRecoveryKey = false
     let onActivated: () -> Void
     init(config: LocalConfig, onActivated: @escaping () -> Void) {
         _model = StateObject(wrappedValue: RecoveryModel(config: config)); self.onActivated = onActivated
@@ -184,9 +197,12 @@ struct RecoveryView: View {
                     VStack(alignment: .leading, spacing: 18) {
                         GlobalCard("备份来源", icon: "externaldrive") {
                             Picker("存储类型", selection: $model.source.target) { Text("本地 / 独立硬盘").tag("local"); Text("云端 S3").tag("cloud") }
+                            Picker("解锁方式", selection: $useRecoveryKey) { Text("备份口令").tag(false); Text("恢复密钥").tag(true) }
+                                .onChange(of: useRecoveryKey) { enabled in if !enabled { model.source.recoveryKeyFile = "" } }
+                            if useRecoveryKey { pathField("恢复密钥文件", $model.source.recoveryKeyFile) }
                             if model.source.target == "local" {
                                 pathField("备份目录", $model.source.repository, directory: true)
-                                pathField("备份口令文件", $model.source.passwordFile)
+                                if !useRecoveryKey { pathField("备份口令文件", $model.source.passwordFile) }
                             } else {
                                 TextField("Endpoint", text: $model.source.cloud.connection.endpoint)
                                 TextField("区域", text: $model.source.cloud.connection.region)
@@ -194,11 +210,11 @@ struct RecoveryView: View {
                                 TextField("专用前缀", text: $model.source.cloud.connection.prefix)
                                 Picker("寻址方式", selection: $model.source.cloud.connection.lookup) { Text("自动").tag("auto"); Text("Path").tag("path"); Text("DNS（OSS）").tag("dns") }
                                 pathField("凭据 JSON", $model.source.cloud.credentialsFile)
-                                pathField("备份口令文件", $model.source.cloud.passwordFile)
+                                if !useRecoveryKey { pathField("备份口令文件", $model.source.cloud.passwordFile) }
                                 pathField("自定义 CA（可选）", $model.source.cloud.connection.caFile)
                             }
                         }
-                        Text("填写备份时使用的连接信息和独立备份口令文件（权限 600）。这些设置仅用于本次恢复。").font(.caption).foregroundStyle(.secondary)
+                        Text(useRecoveryKey ? "选择已启用的恢复文件（权限 600），无需原备份口令。云端恢复仍需存储桶访问凭据。" : "填写备份时使用的连接信息和独立备份口令文件（权限 600）。这些设置仅用于本次恢复。").font(.caption).foregroundStyle(.secondary)
                     }.padding(24)
                 }.disabled(model.busy)
             } else if model.step == 1 {
@@ -207,6 +223,7 @@ struct RecoveryView: View {
                     List(model.snapshots, selection: $model.snapshot) { entry in
                         VStack(alignment: .leading, spacing: 7) {
                             Text(entry.dateLabel)
+                            if !model.source.recoveryKeyFile.isEmpty { Text(model.supports(entry) ? "支持所选恢复密钥" : "未记录此密钥，请选择其他恢复点").font(.caption).foregroundStyle(model.supports(entry) ? Color.secondary : Color.orange) }
                             Text(entry.id).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
                             if let bytes = entry.bytes { Text(ByteCountFormatter.string(fromByteCount: Int64(clamping: bytes), countStyle: .file)).font(.caption).foregroundStyle(.secondary) }
                         }.padding(.vertical, 6).tag(entry.id)
@@ -223,8 +240,12 @@ struct RecoveryView: View {
                     Text(result.directory).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                     Text("快照：\(result.snapshot)").font(.system(size: 11, design: .monospaced)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                     Text("校验记录已保存为 .srics-recovery.json。").font(.caption).foregroundStyle(.secondary)
-                    if result.vaultPresent { Text("私密文件保持加密。请使用备份时的保险库口令解锁确认。").font(.callout) }
-                    if !model.activated { Text("启用会切换资料目录，保留原资料。启用时会先停止现有服务，之后使用备份时的登录密码。").font(.callout).foregroundStyle(.secondary) }
+                    if result.vaultPresent { Text(model.source.recoveryKeyFile.isEmpty ? "私密文件保持加密。请使用备份时的保险库口令解锁确认。" : "取回私密文件时会使用所选恢复密钥解锁。").font(.callout) }
+                    if !model.activated { Text("启用会切换资料目录并停止现有服务。忘记登录密码时，请先使用恢复密钥设置新密码。").font(.callout).foregroundStyle(.secondary) }
+                    if !model.activated && !model.source.recoveryKeyFile.isEmpty {
+                        Button(model.passwordsReset ? "重新设置密码…" : "设置新的登录与私密区密码…") { showReset = true }
+                        if model.passwordsReset { Text("新密码已保存到恢复副本，可以启用资料库。").font(.caption) }
+                    }
                     HStack { Button("在 Finder 中查看") { NSWorkspace.shared.open(URL(fileURLWithPath: result.directory)) }; if !model.activated { Button("取回单项文件…") { showExport = true } } }
                     Spacer()
                 }.padding(24)
@@ -238,8 +259,8 @@ struct RecoveryView: View {
                     else if model.step == 1 { Button("上一步") { model.step = 0; model.message = "" } }
                     Spacer()
                     Button("关闭") { if model.activated { onActivated() }; dismiss() }.disabled(model.busy)
-                    if model.step == 0 { Button("读取备份历史") { model.perform("recovery-snapshots") }.disabled(model.busy).buttonStyle(RecoveryActionStyle()) }
-                    else if model.step == 1 { Button("恢复并校验") { model.perform("recovery-restore") }.disabled(model.busy || model.snapshot == nil || model.directory.isEmpty).buttonStyle(RecoveryActionStyle()) }
+                    if model.step == 0 { Button("读取备份历史") { model.perform("recovery-snapshots") }.disabled(model.busy || (useRecoveryKey && model.source.recoveryKeyFile.isEmpty)).buttonStyle(RecoveryActionStyle()) }
+                    else if model.step == 1 { Button("恢复并校验") { model.perform("recovery-restore") }.disabled(model.busy || !model.canRestore || model.directory.isEmpty).buttonStyle(RecoveryActionStyle()) }
                     else if !model.activated { Button("停止服务并启用") { model.perform("recovery-activate") }.disabled(model.busy).buttonStyle(RecoveryActionStyle()) }
                 }
             }.padding(24)
@@ -247,5 +268,6 @@ struct RecoveryView: View {
         .tint(GlobalPalette.ink).buttonStyle(GlobalButtonStyle()).textFieldStyle(GlobalTextFieldStyle())
         .interactiveDismissDisabled(model.busy)
         .sheet(isPresented: $showExport) { if let result = model.result { RecoveryExportView(source: model.source, directory: result.directory, hasVault: result.vaultPresent) } }
+        .sheet(isPresented: $showReset) { if let result = model.result { RecoveryResetView(source: model.source, result: result) { model.passwordsReset = true } } }
     }
 }

@@ -83,10 +83,32 @@ func (c Client) Backup(ctx context.Context, stage string) (string, error) {
 	return c.backup(ctx, stage, "srics-verification", "m0")
 }
 func (c Client) BackupLibrary(ctx context.Context, stage string) (string, error) {
-	return c.backup(ctx, stage, "srics-library", "library-v1")
+	tags := []string{"library-v1"}
+	data, err := os.ReadFile(filepath.Join(stage, "recovery-keys.json"))
+	if err != nil && !os.IsNotExist(err) {
+		return "", err
+	}
+	if len(data) > 0 {
+		var ids []string
+		if json.Unmarshal(data, &ids) != nil {
+			return "", errors.New("恢复密钥清单无效")
+		}
+		for _, id := range ids {
+			if !snapshotID.MatchString(id) {
+				return "", errors.New("恢复密钥标识无效")
+			}
+			tags = append(tags, "recovery-key:"+id)
+		}
+	}
+	return c.backup(ctx, stage, "srics-library", tags...)
 }
-func (c Client) backup(ctx context.Context, stage, host, tag string) (string, error) {
-	data, err := c.run(ctx, stage, "backup", "--json", "--host", host, "--tag", tag, ".")
+func (c Client) backup(ctx context.Context, stage, host string, tags ...string) (string, error) {
+	args := []string{"backup", "--json", "--host", host}
+	for _, tag := range tags {
+		args = append(args, "--tag", tag)
+	}
+	args = append(args, ".")
+	data, err := c.run(ctx, stage, args...)
 	if err != nil {
 		return "", err
 	}

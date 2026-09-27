@@ -287,7 +287,9 @@ func manager(ctx context.Context, args []string) error {
 		}
 		status.UpdateBackup = dir
 		return json.NewEncoder(os.Stdout).Encode(status)
-	case "recovery-snapshots", "recovery-restore", "recovery-activate", "recovery-inspect", "recovery-items", "recovery-export":
+	case "recovery-key-status", "recovery-key-generate", "recovery-key-confirm":
+		return recoveryKeyManager(ctx, args[0], path, verification.ResolveTools().Restic, os.Stdin)
+	case "recovery-snapshots", "recovery-restore", "recovery-activate", "recovery-inspect", "recovery-items", "recovery-export", "recovery-reset-passwords":
 		return recoveryManager(ctx, args[0], path, verification.ResolveTools().Restic, os.Stdin)
 	case "cloud-check":
 		var request struct {

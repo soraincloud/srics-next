@@ -467,6 +467,9 @@ func (l *Library) Snapshot(ctx context.Context, dest string) error {
 	if err := os.Chmod(filepath.Join(dest, "index.db"), 0600); err != nil {
 		return err
 	}
+	if err := l.recoveryManifest(dest); err != nil {
+		return err
+	}
 	for _, name := range []string{"objects", "staging", "private-objects", "chunks"} {
 		if err := os.Mkdir(filepath.Join(dest, name), 0700); err != nil {
 			return err

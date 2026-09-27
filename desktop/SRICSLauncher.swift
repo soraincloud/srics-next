@@ -180,6 +180,7 @@ func runManager(_ action: String, payload: Data? = nil) throws -> ServiceStatus 
 struct LauncherView: View {
     @StateObject private var model = Launcher()
     @State private var showRecovery = false
+    @State private var showRecoveryKey = false
     @State private var pane: LauncherPane = .service
 
     private var header: some View {
@@ -266,6 +267,11 @@ struct LauncherView: View {
             }.disabled(model.busy || model.running)
         }
         if pane == .backup {
+            GlobalCard("恢复密钥", icon: "key.horizontal") {
+                Text("忘记备份口令和私密区密码时，用单独保管的恢复文件取回资料。").font(.callout)
+                Button("设置恢复密钥…") { showRecoveryKey = true }.disabled(!model.saved || model.changed || model.running)
+                Text(model.running ? "请先停止服务，再管理恢复密钥。" : model.changed || !model.saved ? "请先保存当前配置。" : "生成、导出，再重新选择文件验证并创建备份。").font(.caption).foregroundStyle(.secondary)
+            }
             GlobalCard("本地 / 独立硬盘备份（可选）", icon: "externaldrive.badge.timemachine") {
                 LabeledContent("备份目录") {
                     HStack { TextField("未配置", text: $model.config.backupRepository).textFieldStyle(GlobalTextFieldStyle()).labelsHidden().accessibilityLabel("备份目录路径")
@@ -417,6 +423,7 @@ struct LauncherView: View {
         .textFieldStyle(GlobalTextFieldStyle()).toggleStyle(.switch)
         .task { model.refresh() }
         .sheet(isPresented: $showRecovery) { RecoveryView(config: model.config) { model.status = nil; model.refresh() } }
+        .sheet(isPresented: $showRecoveryKey) { RecoveryKeyView(config: model.config) }
     }
 }
 @main struct SRICSLauncherApp: App {
