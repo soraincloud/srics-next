@@ -23,6 +23,41 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 </dict></plist>
 PLIST
 python3 scripts/bundle-macos-tools.py "$app/Contents/Resources"
+# The launcher target alone does not determine compatibility: bundled Go/CGO
+# executables and Homebrew libraries may require a newer macOS release.
+python3 - "$app" <<'PY'
+import pathlib
+import plistlib
+import re
+import subprocess
+import sys
+
+app = pathlib.Path(sys.argv[1])
+minimum = (13, 0)
+files = [app / 'Contents/MacOS/SRICS Next'] + list((app / 'Contents/Resources/bin').rglob('*'))
+for file in files:
+    if not file.is_file():
+        continue
+    result = subprocess.run(['/usr/bin/otool', '-l', str(file)], capture_output=True, text=True)
+    if result.returncode != 0:
+        continue  # Licenses and other non-Mach-O resources.
+    command = ''
+    for line in result.stdout.splitlines():
+        parts = line.strip().split()
+        if len(parts) == 2 and parts[0] == 'cmd':
+            command = parts[1]
+        if len(parts) == 2 and ((command == 'LC_BUILD_VERSION' and parts[0] == 'minos') or
+                               (command == 'LC_VERSION_MIN_MACOSX' and parts[0] == 'version')):
+            if re.fullmatch(r'\d+(\.\d+){1,2}', parts[1]):
+                minimum = max(minimum, tuple(map(int, parts[1].split('.'))))
+info_path = app / 'Contents/Info.plist'
+with info_path.open('rb') as source:
+    info = plistlib.load(source)
+info['LSMinimumSystemVersion'] = '.'.join(map(str, minimum))
+with info_path.open('wb') as target:
+    plistlib.dump(info, target)
+print('程序包最低 macOS 版本：' + info['LSMinimumSystemVersion'])
+PY
 codesign --force --sign - "$app/Contents/Resources/bin/srics"
 codesign --force --sign - "$app/Contents/MacOS/SRICS Next"
 codesign --force --sign - "$app"

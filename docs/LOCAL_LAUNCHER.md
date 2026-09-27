@@ -1,5 +1,7 @@
 # 本机启动程序
 
+2026-09-27 试用包说明见 [首次安装](TRIAL_INSTALL.md)。本机构建的内置服务和部分依赖要求 macOS 27；打包脚本会按全部 Mach-O 组件计算系统要求，不再仅使用窗口的 macOS 13 编译目标。
+
 > 0.3.0-rc1 更新：分块续传、清理策略、本机自启、更新前保护和恢复副本的单项取回已接入。本文保留阶段记录；当前范围以 [收尾记录](RELEASE_READINESS.md) 和 [验收清单](ACCEPTANCE.md) 为准。
 
 2026-09-19。当前 macOS 开发包：`dist/SRICS Next.app`，由 `scripts/package-macos.sh` 构建，包含 SwiftUI 配置窗口、内嵌网页的 Go 服务、cwebp / restic 及其非系统动态库。
