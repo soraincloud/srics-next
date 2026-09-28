@@ -28,9 +28,10 @@ import (
 )
 
 type session struct {
-	expires time.Time
-	csrf    string
-	vault   *vault.Access
+	expires      time.Time
+	csrf         string
+	vault        *vault.Access
+	vaultVersion uint64
 }
 type LibraryAPI struct {
 	private            privateSecurity

@@ -50,32 +50,15 @@ func (l *Library) collectLocked() error {
 		return err
 	}
 	refs := map[string]map[string]bool{"objects": {}, "private-objects": {}, "chunks": {}}
-	for _, trash := range []bool{false, true} {
-		items, err := l.Items("all", trash)
-		if err != nil {
-			return err
-		}
-		for _, it := range items {
-			for _, p := range it.Pages {
-				refs["objects"][p.Object] = true
-				refs["objects"][p.Thumb] = true
-			}
-		}
-	}
-	uploads, err := l.Uploads()
+	pages, thumbs, err := l.ordinaryReferences()
 	if err != nil {
 		return err
 	}
-	for _, up := range uploads {
-		if up.State == "cancelled" {
-			continue
-		}
-		for _, f := range up.Files {
-			if f.Page != nil {
-				refs["objects"][f.Page.Object] = true
-				refs["objects"][f.Page.Thumb] = true
-			}
-		}
+	for id := range pages {
+		refs["objects"][id] = true
+	}
+	for id := range thumbs {
+		refs["objects"][id] = true
 	}
 	private, err := l.privateRows()
 	if err != nil {

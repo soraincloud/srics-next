@@ -7,8 +7,34 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestConflictingReferencesCannotPassVerificationOrCleanup(t *testing.T) {
+	l := testLibrary(t)
+	it := upload(t, l, "photos", "original.png", fixture(t))
+	orphan, err := l.put([]byte("retain while metadata is suspect"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	it.Pages[0].SHA256 = strings.Repeat("0", 64)
+	b, _ := json.Marshal(it.Pages)
+	if _, err = l.db.Exec("UPDATE items SET pages=? WHERE id=?", b, it.ID); err != nil {
+		t.Fatal(err)
+	}
+	// The completed upload still references the same object with its real hash.
+	// Deduplicating by object ID must not silently hide the damaged item record.
+	if err = l.Verify(context.Background()); err == nil {
+		t.Error("conflicting hashes passed verification")
+	}
+	if err = l.Collect(); err == nil {
+		t.Error("conflicting hashes allowed cleanup")
+	}
+	if _, err = os.Stat(l.ObjectPath(orphan.Object)); err != nil {
+		t.Error("suspect index deleted an object", err)
+	}
+}
 
 func TestOriginalRejectsSameSizeCorruptionAndPinsOpenFile(t *testing.T) {
 	l := testLibrary(t)

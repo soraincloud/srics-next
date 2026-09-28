@@ -52,6 +52,11 @@ func (a *LibraryAPI) vaultIdle() (int, error) {
 	return n, nil
 }
 func (a *LibraryAPI) unlockVault(w http.ResponseWriter, r *http.Request) {
+	initial, ok := a.current(r)
+	if !ok {
+		apiError(w, 401, errors.New("请重新登录"))
+		return
+	}
 	var b struct {
 		Password string `json:"password"`
 	}
@@ -103,8 +108,14 @@ func (a *LibraryAPI) unlockVault(w http.ResponseWriter, r *http.Request) {
 		apiError(w, 401, errors.New("请重新登录"))
 		return
 	}
+	if s.vaultVersion != initial.vaultVersion {
+		a.mu.Unlock()
+		privateError(w, vault.ErrLocked)
+		return
+	}
 	s.vault.Lock()
 	s.vault = vault.NewAccess(a.ctx, key, time.Duration(idle)*time.Minute)
+	s.vaultVersion++
 	a.sessions[cookie.Value] = s
 	a.mu.Unlock()
 	result, err := a.vaultStatus(r)
@@ -144,7 +155,17 @@ func (a *LibraryAPI) privateAPI(w http.ResponseWriter, r *http.Request, parts []
 	}
 	s, _ := a.current(r)
 	if r.URL.Path == "/api/vault/lock" && r.Method == "POST" {
-		s.vault.Lock()
+		// Invalidate unlock requests which are still reading a body, queued for
+		// password derivation, or deriving a key. Locking a nil Access alone does
+		// not prevent a pending request from installing a new key afterwards.
+		cookie, _ := r.Cookie("srics_session")
+		a.mu.Lock()
+		if current, ok := a.sessions[cookie.Value]; ok {
+			current.vault.Lock()
+			current.vaultVersion++
+			a.sessions[cookie.Value] = current
+		}
+		a.mu.Unlock()
 		writeJSON(w, 200, map[string]bool{"ok": true})
 		return
 	}

@@ -633,23 +633,38 @@ func (l *Library) checkIndex(ctx context.Context) error {
 	}
 	return nil
 }
-func (l *Library) verifyObjects(ctx context.Context) error {
-	var err error
+
+// Validate every reference before deduplicating object reads. A completed
+// upload must never mask conflicting metadata on the published item.
+func (l *Library) ordinaryReferences() (map[string]Page, map[string]bool, error) {
 	pages := map[string]Page{}
+	thumbs := map[string]bool{}
+	add := func(p Page) error {
+		if old, ok := pages[p.Object]; ok && (old.Size != p.Size || old.SHA256 != p.SHA256) {
+			return errors.New("同一原件的索引记录不一致，已停止校验和清理，请从备份恢复")
+		}
+		pages[p.Object] = p
+		if p.Thumb != "" {
+			thumbs[p.Thumb] = true
+		}
+		return nil
+	}
 	for _, trash := range []bool{false, true} {
 		items, err := l.Items("all", trash)
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 		for _, it := range items {
 			for _, p := range it.Pages {
-				pages[p.Object] = p
+				if err := add(p); err != nil {
+					return nil, nil, err
+				}
 			}
 		}
 	}
 	uploads, err := l.Uploads()
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	for _, up := range uploads {
 		if up.State == "cancelled" {
@@ -657,9 +672,19 @@ func (l *Library) verifyObjects(ctx context.Context) error {
 		}
 		for _, f := range up.Files {
 			if f.Page != nil {
-				pages[f.Page.Object] = *f.Page
+				if err := add(*f.Page); err != nil {
+					return nil, nil, err
+				}
 			}
 		}
+	}
+	return pages, thumbs, nil
+}
+
+func (l *Library) verifyObjects(ctx context.Context) error {
+	pages, thumbs, err := l.ordinaryReferences()
+	if err != nil {
+		return err
 	}
 	for _, p := range pages {
 		if err = ctx.Err(); err != nil {
@@ -670,13 +695,16 @@ func (l *Library) verifyObjects(ctx context.Context) error {
 			return e
 		}
 		f.Close()
-		if p.Thumb != "" {
-			thumb, e := l.OpenObject(p.Thumb)
-			if e != nil {
-				return e
-			}
-			thumb.Close()
+	}
+	for id := range thumbs {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
+		thumb, err := l.OpenObject(id)
+		if err != nil {
+			return err
+		}
+		thumb.Close()
 	}
 	if err := l.verifyChunks(ctx); err != nil {
 		return err
