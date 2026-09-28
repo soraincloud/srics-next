@@ -78,6 +78,6 @@ Global 风格调整后补充检查：浅色与深色切换、刷新后的主题�
 
 ## macOS 应用图标（2026-09-29）
 
-新增黑色圆角底、银白折页 S 和少量蓝色高光的专用图标，沿用 Global 配色。原图保留透明边缘，打包时生成 16–1024 px 多分辨率 ICNS，由 Info.plist 声明；Finder、Dock 和配置窗口共用。生成来源与提示词见 [AppIcon 说明](../desktop/Assets/README.md)。
+应用图标改为 Apple 原生风格的简洁屏幕：浅色玻璃底、白色机身与蓝色屏幕。使用 Icon Composer 27 保存两层 SVG 与玻璃参数，打包时由 actool 编译 Assets.car 和 ICNS，保留系统深浅色与着色外观；Finder、Dock 和配置窗口共用。源文件与导出方式见 [AppIcon 说明](../desktop/Assets/README.md)。网页和配置界面的 Global 布局保持原有约定。
 
 默认直接交付 `.app` 并在 Finder 中选中，不生成 ZIP。旧程序运行时可用 `SRICS_APP_OUTPUT` 指定新的绝对 `.app` 输出路径，避免替换运行中的包。新版图标在退出旧程序并启动新包后生效。

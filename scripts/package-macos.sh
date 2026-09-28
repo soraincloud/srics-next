@@ -10,14 +10,14 @@ cp bin/srics "$app/Contents/Resources/bin/srics"
 swiftc -O -parse-as-library -target "$(uname -m)-apple-macosx13.0" desktop/*.swift -o "$app/Contents/MacOS/SRICS Next"
 icon_workdir="$(mktemp -d "${TMPDIR:-/tmp}/srics-icon.XXXXXX")"
 trap 'rm -rf "$icon_workdir"' EXIT
-iconset="$icon_workdir/AppIcon.iconset"
-mkdir "$iconset"
-for size in 16 32 128 256 512; do
-  sips -z "$size" "$size" desktop/Assets/AppIcon.png --out "$iconset/icon_${size}x${size}.png" >/dev/null
-  double=$((size * 2))
-  sips -z "$double" "$double" desktop/Assets/AppIcon.png --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
-done
-iconutil -c icns "$iconset" -o "$app/Contents/Resources/AppIcon.icns"
+# Compile the layered Icon Composer source, retaining Liquid Glass materials and
+# system appearance variants. actool also creates the flattened ICNS fallback.
+xcrun actool desktop/Assets/AppIcon.icon \
+  --compile "$icon_workdir" --output-format human-readable-text \
+  --notices --warnings --errors --output-partial-info-plist "$icon_workdir/icon-info.plist" \
+  --app-icon AppIcon --include-all-app-icons --enable-on-demand-resources NO \
+  --development-region en --target-device mac --minimum-deployment-target 13.0 --platform macosx
+cp "$icon_workdir/Assets.car" "$icon_workdir/AppIcon.icns" "$app/Contents/Resources/"
 cat > "$app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -29,7 +29,7 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>0.3.0</string>
-<key>CFBundleVersion</key><string>9</string>
+<key>CFBundleVersion</key><string>10</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
@@ -37,7 +37,7 @@ PLIST
 python3 scripts/bundle-macos-tools.py "$app/Contents/Resources"
 # The launcher target alone does not determine compatibility: bundled Go/CGO
 # executables and Homebrew libraries may require a newer macOS release.
-python3 - "$app" <<'PY'
+python3 - "$app" "$icon_workdir/icon-info.plist" <<'PY'
 import pathlib
 import plistlib
 import re
@@ -65,6 +65,8 @@ for file in files:
 info_path = app / 'Contents/Info.plist'
 with info_path.open('rb') as source:
     info = plistlib.load(source)
+with pathlib.Path(sys.argv[2]).open('rb') as source:
+    info.update(plistlib.load(source))
 info['LSMinimumSystemVersion'] = '.'.join(map(str, minimum))
 with info_path.open('wb') as target:
     plistlib.dump(info, target)

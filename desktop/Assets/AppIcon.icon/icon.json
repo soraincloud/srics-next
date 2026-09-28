@@ -1,0 +1,60 @@
+{
+  "features": [
+    "refractivity"
+  ],
+  "fill": {
+    "automatic-gradient": "extended-srgb:0.88000,0.93000,0.98000,1.00000"
+  },
+  "groups": [
+    {
+      "name": "Blue Screen",
+      "layers": [
+        {
+          "image-name": "Screen.svg",
+          "name": "Screen",
+          "fill": {
+            "automatic-gradient": "extended-srgb:0.08000,0.58000,0.96000,1.00000"
+          }
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.12
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.18
+      },
+      "refractivity": {
+        "depth": 0.12,
+        "enabled": true,
+        "strength": 0.22
+      }
+    },
+    {
+      "layers": [
+        {
+          "image-name": "Display.svg",
+          "name": "Display"
+        }
+      ],
+      "refractivity": {
+        "depth": 0.1,
+        "enabled": true,
+        "strength": 0.3
+      },
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.22
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.25
+      },
+      "name": "Glass Display"
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}
