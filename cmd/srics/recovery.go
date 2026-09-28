@@ -108,6 +108,10 @@ func recoveryDirectory(dest string, protected ...string) (string, error) {
 	return dest, nil
 }
 func restoreVerified(ctx context.Context, c backup.Client, id, dest string, protected ...string) (*recoveryResult, error) {
+	return restoreVerifiedWithKey(ctx, c, id, dest, "", protected...)
+}
+
+func restoreVerifiedWithKey(ctx context.Context, c backup.Client, id, dest, keyFile string, protected ...string) (*recoveryResult, error) {
 	if c.S3 == nil {
 		protected = append(protected, c.Repository)
 	}
@@ -147,6 +151,19 @@ func restoreVerified(ctx context.Context, c backup.Client, id, dest string, prot
 	}
 	verifyErr := l.Verify(ctx)
 	wrapped, keyErr := l.Setting("vault-key")
+	if verifyErr == nil && keyErr == nil && keyFile != "" {
+		// Restic authenticates stored bytes; it cannot establish whether the
+		// application's recovery wrapper can decrypt the private originals.
+		access, err := recoveryKeyAccess(ctx, l, keyFile)
+		if err == nil && access != nil {
+			err = verifyPrivateContents(ctx, l, access)
+			access.Lock()
+		}
+		if err != nil {
+			l.Close()
+			return nil, errors.New("恢复密钥或私密内容校验失败，未确认恢复成功；目录已保留，请尝试其他恢复点")
+		}
+	}
 	closeErr := l.Close()
 	if verifyErr != nil || keyErr != nil || closeErr != nil {
 		return nil, errors.New("恢复后的索引或文件校验未通过；目录已保留供检查")
@@ -303,7 +320,7 @@ func recoveryManager(ctx context.Context, action, path, binary string, input io.
 			var cancel context.CancelFunc
 			ctx, cancel = context.WithTimeout(ctx, 24*time.Hour)
 			defer cancel()
-			response.Result, err = restoreVerified(ctx, client, request.Snapshot, request.Directory, c.Data, c.BackupRepository, filepath.Dir(path))
+			response.Result, err = restoreVerifiedWithKey(ctx, client, request.Snapshot, request.Directory, request.Source.RecoveryKeyFile, c.Data, c.BackupRepository, filepath.Dir(path))
 		default:
 			return errors.New("未知恢复操作")
 		}

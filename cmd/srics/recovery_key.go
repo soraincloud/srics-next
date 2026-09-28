@@ -230,10 +230,10 @@ func confirmRecoveryKey(ctx context.Context, c localConfig, configPath string, c
 			return out, errors.New("恢复文件无法解锁私密区，未启用")
 		}
 		a := vault.NewAccess(ctx, identity, 24*time.Hour)
-		_, e = l.PrivateItems(ctx, a)
+		e = verifyPrivateContents(ctx, l, a)
 		a.Lock()
 		if e != nil {
-			return out, errors.New("恢复密钥未通过私密索引校验")
+			return out, errors.New("恢复密钥未通过私密索引与原件校验")
 		}
 	}
 	if err = client.AddRecoveryPassword(ctx, key.Secret, key.RepositoryID); err != nil {
@@ -388,6 +388,31 @@ func recoveryKeyAccess(ctx context.Context, l *library.Library, file string) (*v
 		return nil, errors.New("恢复密钥未通过私密索引校验")
 	}
 	return a, nil
+}
+
+// PrivateRead authenticates the entire plaintext, its size and hash before
+// returning a reader. Closing it immediately verifies without exporting any
+// plaintext or reading the file twice. Include trash and private previews too.
+func verifyPrivateContents(ctx context.Context, l *library.Library, a *vault.Access) error {
+	items, err := l.PrivateItems(ctx, a)
+	if err != nil {
+		return err
+	}
+	for _, it := range items {
+		for _, thumb := range []bool{false, true} {
+			if thumb && it.Thumb == "" {
+				continue
+			}
+			r, _, err := l.PrivateRead(ctx, a, it, thumb)
+			if err != nil {
+				return err
+			}
+			if err = r.Close(); err != nil {
+				return err
+			}
+		}
+	}
+	return ctx.Err()
 }
 
 func resetRecoveryPasswords(ctx context.Context, path string, req recoveryRequest) (recoveryResponse, error) {

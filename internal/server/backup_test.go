@@ -56,6 +56,57 @@ func TestBackupTargetsHaveIndependentStatusAndSharedExecutionLock(t *testing.T) 
 	}
 }
 
+func TestFailedReadCheckPreservesLastSuccessAndSkipsRetention(t *testing.T) {
+	root := t.TempDir()
+	data := filepath.Join(root, "library")
+	if err := library.Create(data); err != nil {
+		t.Fatal(err)
+	}
+	l, err := library.Open(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	repo := filepath.Join(root, "repo")
+	if err = os.Mkdir(repo, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(repo, "config"), []byte("synthetic-repository"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(root, "restic-test")
+	script := `#!/bin/sh
+case " $* " in
+*" backup "*) printf '%s\n' '{"message_type":"summary","snapshot_id":"` + strings.Repeat("a", 64) + `"}'; exit 0;;
+*" check "*) exit 1;;
+esac
+printf unexpected-command > "$(dirname "$0")/unexpected"
+exit 1
+`
+	if err = os.WriteFile(binary, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	a := &LibraryAPI{store: l, ctx: context.Background(), backup: backup.Client{Binary: binary, Repository: repo, Password: "synthetic-backup-password"}, retention: backup.Retention{Enabled: true, Daily: 1}}
+	previous := backupRecord{Repository: a.backupRepositoryID(), Initialized: true, Status: "passed", Snapshot: strings.Repeat("b", 64), ReadVerified: true, SavedAt: "2026-09-27T01:00:00Z", VerifiedAt: "2026-09-27T01:05:00Z"}
+	if err = a.saveBackupRecord(previous); err != nil {
+		t.Fatal(err)
+	}
+	if err = a.startBackup(); err != nil {
+		t.Fatal(err)
+	}
+	a.wg.Wait()
+	actual, err := a.readBackupRecord()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actual.Status != "failed" || actual.Error == "" || actual.Snapshot != previous.Snapshot || actual.SavedAt != previous.SavedAt || actual.VerifiedAt != previous.VerifiedAt {
+		t.Fatal("failed read verification overwrote last known good restore point", actual)
+	}
+	if _, err = os.Stat(filepath.Join(root, "unexpected")); !os.IsNotExist(err) {
+		t.Fatal("failed check continued to repository cleanup")
+	}
+}
+
 func TestDailyScheduleCatchupRetryAndDST(t *testing.T) {
 	zone, _ := time.LoadLocation("America/New_York")
 	now := time.Date(2026, 3, 8, 12, 0, 0, 0, zone)
