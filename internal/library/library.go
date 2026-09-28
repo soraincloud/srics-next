@@ -122,7 +122,7 @@ func Create(root string) error {
 	if err = f.Close(); err != nil {
 		return err
 	}
-	l, err := Open(root)
+	l, err := openLibrary(root, true)
 	if err != nil {
 		return err
 	}
@@ -131,6 +131,12 @@ func Create(root string) error {
 	return err
 }
 func Open(root string) (*Library, error) {
+	return openLibrary(root, false)
+}
+
+// Only Create may initialize a version-zero database in the directory it just
+// created. An empty existing index is damage, never permission to start over.
+func openLibrary(root string, initialize bool) (*Library, error) {
 	root, err := filepath.Abs(root)
 	if err != nil {
 		return nil, err
@@ -143,6 +149,13 @@ func Open(root string) (*Library, error) {
 		info, e := os.Lstat(filepath.Join(root, name))
 		if e != nil || info.Mode()&os.ModeSymlink != 0 {
 			return nil, errors.New("资料目录不完整或包含无效链接")
+		}
+		if name == "index.db" {
+			if !info.Mode().IsRegular() || (!initialize && info.Size() < 100) {
+				return nil, errors.New("资料索引缺失或被截断，已停止；不会创建空资料库，请从备份恢复")
+			}
+		} else if !info.IsDir() {
+			return nil, errors.New("资料目录不完整")
 		}
 	}
 	lock, err := os.OpenFile(filepath.Join(root, ".lock"), os.O_CREATE|os.O_RDWR, 0600)
@@ -173,6 +186,14 @@ func Open(root string) (*Library, error) {
 	}
 	if version > 4 {
 		return fail(errors.New("数据版本较新，请升级程序后打开"))
+	}
+	if version < 0 || (version == 0 && !initialize) {
+		return fail(errors.New("资料索引版本缺失或损坏，已停止；不会创建空资料库，请从备份恢复"))
+	}
+	if version > 0 {
+		if err = checkSchema(db, version); err != nil {
+			return fail(err)
+		}
 	}
 	if version == 0 {
 		tx, e := db.Begin()
@@ -219,7 +240,7 @@ PRAGMA user_version=1;`)
 		return fail(err)
 	}
 	l := &Library{lock: lock, Root: root, db: db, marker: marker, inode: inode, FreeSpace: freeSpace}
-	if err = l.Check(); err != nil {
+	if err = l.checkIndex(context.Background()); err != nil {
 		l.Close()
 		return nil, err
 	}

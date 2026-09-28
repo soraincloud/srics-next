@@ -289,21 +289,20 @@ func applyConfig(path string, req configureRequest) error {
 	if err := writeConfig(path, c); err != nil {
 		return err
 	}
+	values := map[string][]byte{}
 	if len(wrapped) > 0 {
-		if err = l.SetSetting("vault-key", wrapped); err != nil {
-			return err
-		}
+		values["vault-key"] = wrapped
 	}
 	if req.VaultIdleMinutes > 0 {
-		if err = l.SetSetting("vault-idle", []byte(strconv.Itoa(req.VaultIdleMinutes))); err != nil {
-			return err
-		}
+		values["vault-idle"] = []byte(strconv.Itoa(req.VaultIdleMinutes))
 	}
 	if len(newHash) > 0 {
-		if len(oldHash) == 0 {
-			return l.Setup(newHash)
-		}
-		return l.SetSetting("password", newHash)
+		values["password"] = newHash
 	}
-	return nil
+	// The library is exclusively locked by this process. Publish credentials in
+	// one transaction, so a failed save never changes only one of the passwords.
+	if len(values) == 0 {
+		return nil
+	}
+	return l.SetSettings(values)
 }

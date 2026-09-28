@@ -44,6 +44,7 @@ struct ServiceStatus: Codable, Sendable {
     var certificate: String
     var certFingerprint: String
     var networkError: String
+    var dataError: String?
     var cloudCheck: String
 }
 struct ConfigureRequest: Encodable, Sendable {
@@ -350,6 +351,9 @@ struct LauncherView: View {
     private var footer: some View {
         VStack(alignment: .leading, spacing: 12) {
 
+            if let error = model.status?.dataError, !error.isEmpty {
+                Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled)
+            }
             if let status = model.status, !status.networkError.isEmpty {
                 Text(status.networkError).font(.caption).foregroundStyle(.red)
             }

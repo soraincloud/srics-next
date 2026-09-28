@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -13,6 +16,83 @@ import (
 )
 
 const syntheticPassword = "synthetic-local-password"
+
+func TestManagerReportsDamagedLibraryWithoutRequestingNewPassword(t *testing.T) {
+	base := t.TempDir()
+	path := filepath.Join(base, "config.json")
+	status, err := readManagerStatus(context.Background(), path)
+	if err != nil || status.DataError != "" {
+		t.Fatal("fresh installation reported data damage", err)
+	}
+	c := localConfig{Data: filepath.Join(base, "library"), Port: 19473}
+	if err := applyConfig(path, configureRequest{Config: c, Password: syntheticPassword}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(filepath.Join(c.Data, "index.db"), 0); err != nil {
+		t.Fatal(err)
+	}
+	status, err = readManagerStatus(context.Background(), path)
+	if err != nil || !strings.Contains(status.DataError, "截断") {
+		t.Fatal("manager hid database damage", status.DataError, err)
+	}
+	if runtime.GOOS == "darwin" {
+		if err = startManaged(context.Background(), path); err == nil || !strings.Contains(err.Error(), "截断") {
+			t.Fatal("start requested credentials instead of reporting database damage", err)
+		}
+	}
+}
+
+func TestFailedCredentialChangePreservesBothPasswords(t *testing.T) {
+	base := t.TempDir()
+	path := filepath.Join(base, "config.json")
+	c := localConfig{Data: filepath.Join(base, "library"), Port: 19473}
+	req := configureRequest{Config: c, Password: syntheticPassword, VaultPassword: "synthetic-original-vault-password", VaultIdleMinutes: 7}
+	if err := applyConfig(path, req); err != nil {
+		t.Fatal(err)
+	}
+	l, err := library.Open(c.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldWrapped, err := l.Setting("vault-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.Close()
+	// Inject a write failure at the login-password update, after the old code
+	// had already published the new vault wrapper and idle setting.
+	db, err := sql.Open("sqlite3", filepath.Join(c.Data, "index.db")+"?mode=rw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`CREATE TRIGGER reject_password BEFORE UPDATE ON settings WHEN NEW.key='password' BEGIN SELECT RAISE(ABORT, 'synthetic write failure'); END`)
+	db.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.CurrentPassword, req.CurrentVaultPassword = req.Password, req.VaultPassword
+	req.Password, req.VaultPassword, req.VaultIdleMinutes = "synthetic-new-login-password", "synthetic-new-vault-password", 12
+	if err := applyConfig(path, req); err == nil {
+		t.Fatal("injected failure did not abort configuration")
+	}
+	l, err = library.Open(c.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	hash, err := l.Setting("password")
+	if err != nil || bcrypt.CompareHashAndPassword(hash, []byte(syntheticPassword)) != nil {
+		t.Fatal("failed save changed login password", err)
+	}
+	wrapped, err := l.Setting("vault-key")
+	if err != nil || !bytes.Equal(wrapped, oldWrapped) {
+		t.Fatal("failed save changed vault password", err)
+	}
+	idle, err := l.Setting("vault-idle")
+	if err != nil || string(idle) != "7" {
+		t.Fatal("failed save changed idle setting", err)
+	}
+}
 
 func TestLocalPasswordConfigurationAndChange(t *testing.T) {
 	base := t.TempDir()

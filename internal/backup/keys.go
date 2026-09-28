@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
+	"strings"
 )
 
 // RepositoryID survives moving a repository to another disk or S3 endpoint.
@@ -43,19 +43,9 @@ func (c Client) AddRecoveryPassword(ctx context.Context, secret, repositoryID st
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	f, err := os.CreateTemp("", "srics-recovery-password-*")
-	if err != nil {
-		return errors.New("无法创建临时密钥文件")
-	}
-	defer os.Remove(f.Name())
-	if _, err = f.WriteString(secret + "\n"); err != nil {
-		f.Close()
-		return err
-	}
-	if err = f.Close(); err != nil {
-		return err
-	}
-	if _, err = c.run(ctx, "", "key", "add", "--new-password-file", f.Name(), "--host", "srics-recovery", "--user", "recovery"); err != nil {
+	// Feed the new secret through a pipe. A process kill must not leave a
+	// plaintext recovery-password file in the system temporary directory.
+	if _, err = c.runInput(ctx, "", 0, strings.NewReader(secret+"\n"), "key", "add", "--new-password-file", "/dev/stdin", "--host", "srics-recovery", "--user", "recovery"); err != nil {
 		return err
 	}
 	id, err = recovery.RepositoryID(ctx)

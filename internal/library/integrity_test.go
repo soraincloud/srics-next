@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -98,5 +99,58 @@ func TestDatabaseDriveCacheFlushSurvivesConnectionReplacement(t *testing.T) {
 		if err := l.db.QueryRow("PRAGMA " + name).Scan(&on); err != nil || on != 1 {
 			t.Fatal(name, on, err)
 		}
+	}
+}
+
+func TestTruncatedDatabaseNeverBecomesEmptyLibrary(t *testing.T) {
+	l := testLibrary(t)
+	data := fixture(t)
+	it := upload(t, l, "photos", "original.png", data)
+	root, original := l.Root, l.ObjectPath(it.Pages[0].Object)
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	index := filepath.Join(root, "index.db")
+	if err := os.Truncate(index, 0); err != nil {
+		t.Fatal(err)
+	}
+	if reopened, err := Open(root); err == nil {
+		defer reopened.Close()
+		// This is the destructive consequence of accepting the empty index.
+		if err := reopened.Collect(); err != nil {
+			t.Fatal(err)
+		}
+		_, statErr := os.Stat(original)
+		t.Fatalf("truncated database accepted as new library; original after GC: %v", statErr)
+	}
+	if info, err := os.Stat(index); err != nil || info.Size() != 0 {
+		t.Fatal("damaged index was rewritten", err)
+	}
+	if got, err := os.ReadFile(original); err != nil || !bytes.Equal(got, data) {
+		t.Fatal("failed startup changed original", err)
+	}
+}
+
+func TestDamagedSchemaStopsStartupAndPreservesObjects(t *testing.T) {
+	for _, damage := range []string{"PRAGMA user_version=0", "DROP TABLE chapter_versions", "ALTER TABLE items DROP COLUMN pages"} {
+		t.Run(damage, func(t *testing.T) {
+			l := testLibrary(t)
+			data := fixture(t)
+			it := upload(t, l, "photos", "original.png", data)
+			root, original := l.Root, l.ObjectPath(it.Pages[0].Object)
+			if _, err := l.db.Exec(damage); err != nil {
+				t.Fatal(err)
+			}
+			if err := l.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if reopened, err := Open(root); err == nil {
+				reopened.Close()
+				t.Fatal("damaged schema accepted")
+			}
+			if got, err := os.ReadFile(original); err != nil || !bytes.Equal(got, data) {
+				t.Fatal("failed startup changed original", err)
+			}
+		})
 	}
 }

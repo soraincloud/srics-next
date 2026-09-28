@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,6 +28,10 @@ func (c Client) run(ctx context.Context, dir string, args ...string) ([]byte, er
 	return c.runLimited(ctx, dir, 0, args...)
 }
 func (c Client) runLimited(ctx context.Context, dir string, limit int, args ...string) ([]byte, error) {
+	return c.runInput(ctx, dir, limit, nil, args...)
+}
+
+func (c Client) runInput(ctx context.Context, dir string, limit int, input io.Reader, args ...string) ([]byte, error) {
 	if len(c.Password) < 12 {
 		return nil, errors.New("备份口令至少需要 12 字节")
 	}
@@ -53,6 +58,7 @@ func (c Client) runLimited(ctx context.Context, dir string, limit int, args ...s
 	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
 	cmd.WaitDelay = 5 * time.Second
 	cmd.Dir = dir
+	cmd.Stdin = input
 	for _, v := range os.Environ() {
 		// An inherited AWS role/token or debug sink must never override this target.
 		key, _, _ := strings.Cut(v, "=")

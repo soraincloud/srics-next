@@ -41,6 +41,7 @@ type managerStatus struct {
 	Certificate      string      `json:"certificate"`
 	CertFingerprint  string      `json:"certFingerprint"`
 	NetworkError     string      `json:"networkError"`
+	DataError        string      `json:"dataError"`
 	CloudCheck       string      `json:"cloudCheck"`
 }
 
@@ -110,6 +111,8 @@ func readManagerStatus(ctx context.Context, path string) (managerStatus, error) 
 		}
 		l.Close()
 		s.PasswordSet = err == nil && len(hash) > 0
+	} else if _, statErr := os.Lstat(c.Data); saved || !os.IsNotExist(statErr) {
+		s.DataError = err.Error()
 	}
 	return s, nil
 }
@@ -146,6 +149,9 @@ func startManaged(ctx context.Context, path string) error {
 	}
 	if s.Running && s.PasswordSet {
 		return nil
+	}
+	if s.DataError != "" {
+		return errors.New(s.DataError)
 	}
 	if !s.Saved || !s.PasswordSet {
 		return errors.New("请先保存本机配置和登录密码")
