@@ -1,7 +1,6 @@
 name: Verify library and recovery
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:

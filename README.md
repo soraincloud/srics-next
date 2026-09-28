@@ -38,7 +38,7 @@ restic 从固定的 0.19.1 源码与 `scripts/restic/` 中的依赖清单构建�
 
 运行 `./scripts/check.sh` 完成构建、静态检查、并发测试和恢复集成测试。打包后运行 `python3 scripts/check-launcher.py 'dist/SRICS Next.app/Contents/Resources/bin/srics'` 检查独立测试资料库的后台启停与登录。样本验证仍可从网页运行，或执行 `./bin/srics verify --report reports/new-report.json`；不会覆盖已有报告，也不读取真实资料。
 
-开发协作约定：本仓库由个人维护，默认直接在 `main` 开发。每批改动完成相应检查后，提交并推送到 `main`，不额外创建开发分支或 PR；用户另有要求时再调整流程。功能与验收记录继续维护在 `docs/`。
+开发协作约定：本仓库由个人维护，日常开发、检查与打包在本机的 `develop` 分支进行，通过 GitHub Desktop 推送；`main` 保留已验收版本，不创建 PR。准备发布时再将验收通过的内容合入 `main`。GitHub Actions 仅支持手动触发，普通推送、合并及 PR 均不自动运行，避免消耗构建额度；需要云端构建时由用户明确发起。功能与验收记录继续维护在 `docs/`。
 
 界面参考 Lumoswitch Global 版的黑白对比、描边卡片与胶囊控件，支持浅色 / 深色切换。桌面使用侧边栏，手机使用底部导航。设计与交互约定见 [界面记录](docs/INTERFACE.md)。
 
