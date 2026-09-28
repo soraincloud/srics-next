@@ -186,9 +186,8 @@ struct LauncherView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            Image(systemName: "square.grid.2x2").font(.system(size: 19, weight: .semibold))
-                .foregroundStyle(GlobalPalette.inverse).frame(width: 42, height: 42)
-                .background(Circle().fill(GlobalPalette.ink))
+            Image("AppIcon").resizable().interpolation(.high)
+                .frame(width: 42, height: 42).accessibilityHidden(true)
             Text("SRICS").font(.system(size: 23, weight: .heavy))
             Text("Next").font(.system(size: 12, weight: .semibold)).foregroundStyle(GlobalPalette.muted)
             Rectangle().fill(GlobalPalette.line).frame(width: 1, height: 22).padding(.horizontal, 8)

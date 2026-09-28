@@ -3,10 +3,21 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 [[ "$(uname -s)" == Darwin ]] || { echo '此打包脚本需要 macOS。' >&2; exit 1; }
 if [[ "${1:-}" != --skip-build ]]; then ./scripts/build.sh; fi
-app="$PWD/dist/SRICS Next.app"
+app="${SRICS_APP_OUTPUT:-$PWD/dist/SRICS Next.app}"
+[[ "$app" = /* && "$app" = *.app ]] || { echo 'SRICS_APP_OUTPUT 需要是以 .app 结尾的绝对路径。' >&2; exit 1; }
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/bin/tools" "$app/Contents/Resources/licenses"
 cp bin/srics "$app/Contents/Resources/bin/srics"
 swiftc -O -parse-as-library -target "$(uname -m)-apple-macosx13.0" desktop/*.swift -o "$app/Contents/MacOS/SRICS Next"
+icon_workdir="$(mktemp -d "${TMPDIR:-/tmp}/srics-icon.XXXXXX")"
+trap 'rm -rf "$icon_workdir"' EXIT
+iconset="$icon_workdir/AppIcon.iconset"
+mkdir "$iconset"
+for size in 16 32 128 256 512; do
+  sips -z "$size" "$size" desktop/Assets/AppIcon.png --out "$iconset/icon_${size}x${size}.png" >/dev/null
+  double=$((size * 2))
+  sips -z "$double" "$double" desktop/Assets/AppIcon.png --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
+done
+iconutil -c icns "$iconset" -o "$app/Contents/Resources/AppIcon.icns"
 cat > "$app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -15,9 +26,10 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <key>CFBundleDisplayName</key><string>SRICS Next</string>
 <key>CFBundleIdentifier</key><string>com.soraincloud.srics.launcher</string>
 <key>CFBundleExecutable</key><string>SRICS Next</string>
+<key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>0.3.0</string>
-<key>CFBundleVersion</key><string>8</string>
+<key>CFBundleVersion</key><string>9</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
