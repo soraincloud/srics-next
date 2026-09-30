@@ -8,25 +8,18 @@ struct PasswordField: View {
     var error: String?
     @State private var revealed = false
     @State private var hovering = false
-    @FocusState private var focused: Bool
+    @State private var focused = false
     @Environment(\.isEnabled) private var enabled
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(title).font(.system(size: 12, weight: .medium))
             HStack(spacing: 4) {
-                Group {
-                    if revealed { TextField(placeholder, text: $text) }
-                    else { SecureField(placeholder, text: $text) }
-                }
-                .textFieldStyle(.plain)
-                .font(.system(size: 13))
-                .padding(.leading, 12).padding(.vertical, 11)
-                .focused($focused)
-                .autocorrectionDisabled(true)
-                .textContentType(.password)
-                .accessibilityLabel(title)
-                Button { revealed.toggle(); focused = true } label: {
+                NativePasswordInput(text: $text, focused: $focused, revealed: revealed, enabled: enabled, title: title, placeholder: placeholder)
+                    .frame(height: 18)
+                    .help("隐藏时使用英文直接输入。中文口令可先显示再输入，或粘贴后核对。")
+                    .padding(.leading, 12).padding(.vertical, 11)
+                Button { revealed.toggle() } label: {
                     Image(systemName: revealed ? "eye.slash" : "eye")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(hovering || revealed ? GlobalPalette.ink : GlobalPalette.muted)
