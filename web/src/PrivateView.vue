@@ -31,6 +31,8 @@ type Item = {
 const props = defineProps<{ module: string }>();
 const isPhoto = computed(() => props.module === "private");
 const title = computed(() => (isPhoto.value ? "私密照片" : "个人文件"));
+const showPassword = ref(false);
+function hidePassword() { showPassword.value = false; }
 const password = ref(""),
   error = ref(""),
   loading = ref(false),
@@ -75,6 +77,7 @@ function clearPrivate() {
   selecting.value = false;
   query.value = "";
   password.value = "";
+  hidePassword();
   viewing.value = undefined;
   editing.value = undefined;
   editName.value = "";
@@ -91,6 +94,7 @@ async function unlock() {
   error.value = "";
   const value = password.value;
   password.value = "";
+  hidePassword();
   try {
     await unlockVault(value);
   } catch (e) {
@@ -222,6 +226,7 @@ async function change(it: Item, action: string, name = "") {
   }
 }
 onMounted(async () => {
+  window.addEventListener("blur", hidePassword);
   try {
     await vaultStatus();
     checked.value = true;
@@ -232,6 +237,7 @@ onMounted(async () => {
   }
 });
 onUnmounted(() => {
+  window.removeEventListener("blur", hidePassword);
   controller.abort();
   clearTimeout(searchTimer);
   clearPrivate();
@@ -254,16 +260,29 @@ onUnmounted(() => {
     <h2>保险库已锁定</h2>
     <p v-if="!checked">正在检查配置…</p>
     <form v-else-if="vaultConfigured" @submit.prevent="unlock">
-      <label for="vault-password">保险库口令</label
-      ><input
-        id="vault-password"
-        v-model="password"
-        type="password"
-        autocomplete="off"
-        required
-        :disabled="unlocking"
-        placeholder="输入独立口令"
-      />
+      <label for="vault-password">保险库口令</label>
+      <div class="password-input">
+        <input
+          id="vault-password"
+          v-model="password"
+          :type="showPassword ? 'text' : 'password'"
+          autocomplete="off"
+          autocapitalize="none"
+          :spellcheck="false"
+          required
+          :disabled="unlocking"
+          placeholder="输入独立口令"
+        />
+        <button
+          type="button"
+          class="password-toggle"
+          :aria-label="showPassword ? '隐藏保险库口令' : '显示保险库口令'"
+          :aria-pressed="showPassword"
+          :title="showPassword ? '隐藏保险库口令' : '显示保险库口令'"
+          :disabled="unlocking"
+          @click="showPassword = !showPassword"
+        ><Icon :name="showPassword ? 'eye-off' : 'eye'" /></button>
+      </div>
       <button class="button primary" :disabled="unlocking || !password">
         {{ unlocking ? "正在解锁…" : "解锁" }}<Icon name="arrow" />
       </button>
