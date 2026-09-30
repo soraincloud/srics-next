@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from "vue";
 import Icon from "./Icon.vue";
+import EmptyState from "./EmptyState.vue";
 import ActionConfirm from "./ActionConfirm.vue";
 const confirmation = ref<InstanceType<typeof ActionConfirm>>(),
   storage = ref<any>(),
@@ -260,13 +261,7 @@ onUnmounted(() => {
         </button>
       </div>
     </div>
-    <section v-else class="collection-empty panel">
-      <span class="empty-icon"><Icon name="trash" /></span>
-      <h2>回收站是空的</h2>
-      <p>
-        已删除的小说、漫画、图片和照片可在这里恢复。章节在各本小说的“已删除”目录恢复。
-      </p>
-    </section>
+    <EmptyState v-else-if="storage && !error" icon="trash" title="回收站为空" description="移到回收站的漫画、小说、图片和照片会显示在这里。" />
     <button v-if="next" class="button secondary" @click="load(true)">
       加载更多
     </button>
@@ -406,7 +401,7 @@ onUnmounted(() => {
             >
           </li>
         </ol>
-        <p v-else class="subtle-copy">这个目标还没有资料库快照。</p>
+        <EmptyState v-else-if="!historyBusy && !historyError" compact icon="clock" title="暂无备份记录" description="此备份目标的快照会显示在这里。" />
         <button
           v-if="historyNext"
           class="button small secondary"

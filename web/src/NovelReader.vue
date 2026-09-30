@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import Icon from "./Icon.vue";
+import EmptyState from "./EmptyState.vue";
 import ActionConfirm from "./ActionConfirm.vue";
 const confirmation = ref<InstanceType<typeof ActionConfirm>>();
 import {
@@ -729,25 +730,11 @@ onUnmounted(() => {
           </button>
         </nav>
       </template>
-      <div v-else class="chapter-placeholder">
-        <Icon name="text" />
-        <p>
-          {{
-            loading
-              ? "正在加载…"
-              : novel.chapters.length
-                ? "选择章节开始阅读"
-                : "暂无章节"
-          }}
-        </p>
-        <button
-          v-if="!novel.chapters.length"
-          class="button primary"
-          @click="beginChapter"
-        >
-          新增章节
-        </button>
-      </div>
+      <EmptyState v-else compact icon="text"
+        :title="loading ? '正在加载…' : novel.chapters.length ? '选择章节开始阅读' : '暂无章节'"
+        :description="!loading && !novel.chapters.length ? '添加章节后，即可编辑正文。' : undefined">
+        <button v-if="!loading && !novel.chapters.length" class="button secondary small" @click="beginChapter">新增章节</button>
+      </EmptyState>
     </section>
   </div>
   <dialog

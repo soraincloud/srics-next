@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch, nextTick } from "vue";
 import Icon from "./Icon.vue";
+import EmptyState from "./EmptyState.vue";
 import { useGalleryNavigation } from "./gallery";
 import PrivateImage from "./PrivateImage.vue";
 import PrivateUploads from "./PrivateUploads.vue";
@@ -351,7 +352,7 @@ onUnmounted(() => {
     </div>
     <p v-if="selectionMessage" class="subtle-copy selection-feedback" role="status">{{ selectionMessage }}</p>
     <div
-      v-if="isPhoto && !trash"
+      v-if="isPhoto && !trash && items.length"
       class="private-gallery"
       :class="{ 'private-random': random, 'is-selecting': selecting }"
     >
@@ -450,17 +451,15 @@ onUnmounted(() => {
         </div>
       </article>
     </div>
-    <div v-if="!loading && !items.length" class="panel private-empty">
-      <Icon :name="trash ? 'trash' : isPhoto ? 'image' : 'folder'" />
-      <p>{{ query ? "没有匹配的文件" : trash ? "回收站为空" : "暂无内容" }}</p>
-      <button
-        v-if="!query && !trash"
-        class="button secondary"
-        @click="uploader?.chooseFiles()"
-      >
-        选择文件
-      </button>
-    </div>
+    <EmptyState
+      v-if="!loading && !items.length && !error"
+      :icon="query ? 'search' : trash ? 'trash' : isPhoto ? 'image' : 'folder'"
+      :title="query ? '没有匹配的文件' : trash ? '回收站为空' : isPhoto ? '暂无私密照片' : '暂无个人文件'"
+      :description="query ? '换个名称或清除搜索后再试。' : trash ? '移到回收站的私密资料会显示在这里。' : isPhoto ? '上传的照片会加密保存到保险库。' : '上传的文件会加密保存到保险库。'"
+    >
+      <button v-if="query" class="button secondary small" @click="query = ''; load()">清除搜索</button>
+      <button v-else-if="!trash" class="button secondary small" @click="uploader?.chooseFiles()"><Icon name="upload" />{{ isPhoto ? '上传照片' : '上传文件' }}</button>
+    </EmptyState>
     <div class="private-more">
       <span v-if="loading">正在加载…</span
       ><button v-else-if="next" class="button secondary" @click="load(true)">

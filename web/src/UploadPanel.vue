@@ -140,11 +140,12 @@ async function cancel(task: Upload) {
   }
 }
 onMounted(() => loadUploads().catch((e) => (error.value = e.message)));
+defineExpose({ open: () => open() });
 </script>
 <template>
   <div class="upload-actions">
     <button class="button primary" @click="open()">
-      <Icon name="upload" />{{ module === "comics" ? "导入漫画" : "上传图片" }}
+      <Icon name="upload" />{{ module === "comics" ? "导入漫画" : module === "photos" ? "上传照片" : "上传图片" }}
     </button>
   </div>
   <section

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import Icon from "./Icon.vue";
+import EmptyState from "./EmptyState.vue";
 import { useGalleryNavigation } from "./gallery";
 import UploadPanel from "./UploadPanel.vue";
 import {
@@ -12,6 +13,7 @@ import {
   previewURL,
   type Item,
 } from "./api";
+const uploader = ref<InstanceType<typeof UploadPanel>>();
 const props = defineProps<{
   module: string;
   itemId?: string;
@@ -313,7 +315,7 @@ onUnmounted(() => {
       <p class="subtitle">{{ sub }}</p>
     </div>
     <span class="quiet-badge"
-      >{{ total }} {{ isComic ? "本漫画" : "张图片" }}</span
+      >{{ total }} {{ isComic ? "本漫画" : module === "photos" ? "张照片" : "张图片" }}</span
     >
   </section>
   <p v-if="notice" class="action-notice" role="status">
@@ -361,7 +363,7 @@ onUnmounted(() => {
         :aria-pressed="selecting" :disabled="saving || loading" @click="toggleSelectionMode">
         {{ selecting ? "完成选择" : "选择图片" }}
       </button>
-      <UploadPanel :key="module" :module="module" />
+      <UploadPanel ref="uploader" :key="module" :module="module" />
     </div>
     <div
       v-if="isComic && tags.length"
@@ -491,29 +493,15 @@ onUnmounted(() => {
         </div>
       </article>
     </div>
-    <section v-else-if="!loading && !error" class="collection-empty panel">
-      <span class="empty-icon"
-        ><Icon :name="isComic ? 'book' : 'image'"
-      /></span>
-      <h2>
-        {{
-          query || selectedTags.length
-            ? "没有找到匹配的漫画"
-            : isComic
-              ? "暂无漫画"
-              : "暂无图片"
-        }}
-      </h2>
-      <p>
-        {{
-          query || selectedTags.length
-            ? "试试其他名称，或减少筛选标签。"
-            : isComic
-              ? "点击「导入漫画」，选择你的图片文件夹。"
-              : "点击「上传图片」，开始保存你的原件。"
-        }}
-      </p>
-    </section>
+    <EmptyState
+      v-else-if="!loading && !error"
+      :icon="query || selectedTags.length ? 'search' : isComic ? 'book' : module === 'photos' ? 'camera' : 'image'"
+      :title="query || selectedTags.length ? '没有匹配的漫画' : isComic ? '暂无漫画' : module === 'photos' ? '暂无照片' : '暂无图片'"
+      :description="query || selectedTags.length ? '换个名称或清除筛选后再试。' : isComic ? '导入图片文件夹，按顺序连续阅读。' : module === 'photos' ? '上传后保留照片原件与元数据。' : '上传图片后，可以在这里浏览。'"
+    >
+      <button v-if="query || selectedTags.length" class="button secondary small" @click="query = ''; selectedTags = []; load()">清除筛选</button>
+      <button v-else class="button secondary small" @click="uploader?.open()"><Icon name="upload" />{{ isComic ? '导入漫画' : module === 'photos' ? '上传照片' : '上传图片' }}</button>
+    </EmptyState>
     <div v-if="next" ref="sentinel" class="load-more">
       <button class="button secondary" :disabled="loading" @click="load(true)">
         {{ loading ? "正在加载…" : "加载更多" }}

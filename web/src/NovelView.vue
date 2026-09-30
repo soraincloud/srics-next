@@ -3,6 +3,7 @@ import { onMounted, onUnmounted, ref } from "vue";
 import { api, changed, jsonBody, type Item } from "./api";
 import { newID, parseTags, type Novel } from "./novels";
 import Icon from "./Icon.vue";
+import EmptyState from "./EmptyState.vue";
 import NovelReader from "./NovelReader.vue";
 const props = defineProps<{ itemId?: string }>();
 const items = ref<Item[]>([]),
@@ -158,7 +159,7 @@ onUnmounted(() => {
         清除标签
       </button><span v-if="selected.length">同时满足所选标签</span>
     </div>
-    <div class="novel-grid">
+    <div v-if="items.length" class="novel-grid">
       <a
         v-for="item in items"
         :key="item.id"
@@ -173,13 +174,15 @@ onUnmounted(() => {
         <span class="novel-card-footer">打开小说<Icon name="arrow" /></span>
       </a>
     </div>
-    <section
+    <EmptyState
       v-if="!loading && !items.length && !error"
-      class="collection-empty panel"
+      :icon="query || selected.length ? 'search' : 'text'"
+      :title="query || selected.length ? '没有匹配的小说' : '暂无小说'"
+      :description="query || selected.length ? '换个名称或清除筛选后再试。' : '新建小说后，可以添加和编辑章节。'"
     >
-      <span class="empty-icon"><Icon name="text" /></span>
-      <h2>{{ query || selected.length ? "没有匹配的小说" : "暂无小说" }}</h2>
-    </section>
+      <button v-if="query || selected.length" class="button secondary small" @click="query = ''; selected = []; load()">清除筛选</button>
+      <button v-else class="button secondary small" @click="edit"><Icon name="edit" />新建小说</button>
+    </EmptyState>
     <button
       v-if="next"
       class="button secondary novel-more"

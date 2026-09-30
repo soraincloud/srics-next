@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import Icon from "./Icon.vue";
+import EmptyState from "./EmptyState.vue";
 import LibraryView from "./LibraryView.vue";
 import PrivateView from "./PrivateView.vue";
 import { installVaultLifecycle, vaultOpen, lockVault } from "./vault";
@@ -288,10 +289,9 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
           <a href="#/verify" class="text-link">打开样本自检<Icon name="arrow" /></a>
         </template>
 
-        <section v-else class="module-empty panel">
-          <span class="empty-icon"><Icon name="folder" /></span><h1>找不到这个页面</h1>
-          <p>链接可能已失效，请从资料库重新进入。</p><a href="#/" class="button primary">返回资料库</a>
-        </section>
+        <EmptyState v-else icon="folder" title="找不到这个页面" description="链接可能已失效，请从资料库重新进入。">
+          <a href="#/" class="button secondary small">返回资料库</a>
+        </EmptyState>
       </main>
     </div>
 
