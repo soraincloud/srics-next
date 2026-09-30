@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { expireSession, csrf } from "./api";
 
 type CheckStatus = "pending" | "running" | "passed" | "failed" | "blocked";
+type Release = { version: string; build: number; label: string; commit: string; dirty: boolean; builtAt: string };
 export type Report = {
   status: "idle" | "running" | "passed" | "failed";
   startedAt: string;
@@ -12,6 +13,7 @@ export type Report = {
 };
 
 export function useVerification() {
+  const release = ref<Release | null>(null);
   const report = ref<Report | null>(null);
   const connection = ref<"connecting" | "online" | "offline">("connecting");
   const error = ref("");
@@ -47,6 +49,7 @@ export function useVerification() {
         const data = await response.json();
         if (!stopped) {
           report.value = data.report;
+          release.value = data.release || null;
           connection.value = "online";
           syncing.value = false;
         }
@@ -106,5 +109,5 @@ export function useVerification() {
     document.removeEventListener("visibilitychange", resume);
     window.removeEventListener("online", resume);
   });
-  return { report, connection, error, starting, syncing, refreshing, busy, refresh, start };
+  return { report, release, connection, error, starting, syncing, refreshing, busy, refresh, start };
 }

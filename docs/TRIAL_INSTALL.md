@@ -1,8 +1,8 @@
 # SRICS Next 试用包安装说明
 
-版本：0.3.0-rc6。当前包：Apple Silicon（M 系列）Mac，macOS 27.0 或更新版本。
+版本：v0.3.0-rc7 · Build 12。当前包：Apple Silicon（M 系列）Mac，macOS 27.0 或更新版本。
 
-本机交付直接提供 `SRICS Next.app` 并在 Finder 中选中，不生成压缩包。2026-09-30 的 build 11 清理了旧开发文案、补充标签回归检查，保留 Icon Composer 制作的原生 Liquid Glass 屏幕图标；服务仍为 rc6。当前应用位于 `dist/0.3.0-rc6-build11/SRICS Next.app`。
+本机交付直接提供 `SRICS Next.app` 并在 Finder 中选中，不生成压缩包。2026-09-30 的 build 12 统一显示版本、构建号、代码版本与构建时间，保留原生 Liquid Glass 屏幕图标。当前应用位于 `dist/0.3.0-rc7-build12/SRICS Next.app`。变化见 [更新记录](../CHANGELOG.md)。
 
 这是现有构建机生成的试用包。程序窗口本身以 macOS 13 为编译目标，但本包的服务和部分内置库要求 macOS 27；打包脚本现在会按全部内置组件的最高要求设置最低系统版本。旧系统需要另外构建兼容依赖的包，不能通过修改版本标记获得兼容性。
 

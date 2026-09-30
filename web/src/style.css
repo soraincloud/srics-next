@@ -240,6 +240,11 @@ progress::-moz-progress-bar { background: var(--strong); border-radius: 6px; }
 .about-intro .brand-mark svg { width: 28px; height: 28px; }
 .about-intro h2 { color: var(--strong); font-size: 22px; font-weight: 760; }
 .about-intro p { max-width: 600px; color: var(--secondary); font-size: 13px; line-height: 1.9; margin-top: 9px; }
+.release-label { margin: 12px 0 0; padding: 0 20px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.about-intro .release-current { color: var(--strong); font-weight: 650; }
+.release-metadata { display: flex; flex-wrap: wrap; gap: 20px 40px; margin: 20px 0 28px; font-size: 12px; }
+.release-metadata dt { color: var(--muted); margin-bottom: 6px; }
+.release-metadata dd { color: var(--secondary); margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .about-notes { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin: 28px 4px 12px; }
 .about-notes svg { color: var(--strong); margin-bottom: 10px; width: 23px; height: 23px; }
 .about-notes h3 { font-size: 14px; font-weight: 700; }

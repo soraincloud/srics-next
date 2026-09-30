@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/soraincloud/srics-next/internal/atomicfile"
+	"github.com/soraincloud/srics-next/internal/buildinfo"
 	"github.com/soraincloud/srics-next/internal/library"
 	"github.com/soraincloud/srics-next/internal/verification"
 )
@@ -54,11 +55,12 @@ func writeLoginAgent(dest, path string, c localConfig, executable string) error 
 }
 
 type updateRecord struct {
-	Version     string    `json:"version"`
-	Time        time.Time `json:"time"`
-	Target      string    `json:"target"`
-	Snapshot    string    `json:"snapshot"`
-	PreviousApp string    `json:"previousApp"`
+	Version     string         `json:"version"`
+	Release     buildinfo.Info `json:"release"`
+	Time        time.Time      `json:"time"`
+	Target      string         `json:"target"`
+	Snapshot    string         `json:"snapshot"`
+	PreviousApp string         `json:"previousApp"`
 }
 
 func prepareUpdate(ctx context.Context, path string) (string, error) {
@@ -119,7 +121,7 @@ func prepareUpdate(ctx context.Context, path string) (string, error) {
 	if err = os.MkdirAll(dir, 0700); err != nil {
 		return "", err
 	}
-	record := updateRecord{Version: version, Time: time.Now().UTC(), Target: target, Snapshot: id}
+	record := updateRecord{Version: version, Release: buildinfo.Current(), Time: time.Now().UTC(), Target: target, Snapshot: id}
 	exe, err := os.Executable()
 	if err != nil {
 		return "", err

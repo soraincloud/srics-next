@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/soraincloud/srics-next/internal/buildinfo"
 	"github.com/soraincloud/srics-next/internal/verification"
 )
 
@@ -87,7 +88,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.mu.RLock()
 		defer s.mu.RUnlock()
-		writeJSON(w, http.StatusOK, map[string]any{"report": s.report})
+		writeJSON(w, http.StatusOK, map[string]any{"report": s.report, "release": buildinfo.Current()})
 	case "/api/verification":
 		if r.Method != http.MethodPost {
 			methodNotAllowed(w, "POST")

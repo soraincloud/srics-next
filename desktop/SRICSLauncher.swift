@@ -29,8 +29,26 @@ struct LocalConfig: Codable, Equatable, Sendable {
     var backupDailyAt = ""
     var cloud = CloudConfig()
 }
+struct ReleaseInfo: Codable, Sendable {
+    var version: String
+    var build: Int
+    var label: String
+    var commit: String
+    var dirty: Bool
+    var builtAt: String
+
+    static let bundled: ReleaseInfo? = {
+        guard let url = Bundle.main.url(forResource: "release", withExtension: "json"),
+              let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(ReleaseInfo.self, from: data)
+    }()
+
+    var codeLabel: String { (commit.isEmpty ? "未记录" : String(commit.prefix(12))) + (dirty ? "（含未提交修改）" : "") }
+    var buildTimeLabel: String { builtAt.isEmpty ? "未记录" : builtAt.replacingOccurrences(of: "T", with: " ").replacingOccurrences(of: "Z", with: "") }
+}
 struct ServiceStatus: Codable, Sendable {
     var version: String
+    var release: ReleaseInfo?
     var updateBackup: String
     var config: LocalConfig
     var saved: Bool
@@ -222,7 +240,7 @@ struct LauncherView: View {
             }
             Spacer()
             Divider().padding(.vertical, 12)
-            Text(model.status?.version ?? "SRICS Next").font(.system(size: 11, weight: .medium))
+            Text(ReleaseInfo.bundled?.label ?? model.status?.release?.label ?? "版本信息不可用").font(.system(size: 11, weight: .medium))
                 .foregroundStyle(GlobalPalette.muted).padding(.leading, 20)
         }.padding(.horizontal, 14).padding(.vertical, 28).frame(width: 204).background(GlobalPalette.surface)
     }
@@ -339,7 +357,12 @@ struct LauncherView: View {
         }
         if pane == .updates {
             GlobalCard("版本与更新", icon: "square.and.arrow.down") {
-                Text("当前版本：\(model.status?.version ?? "—")").font(.caption)
+                if let release = ReleaseInfo.bundled ?? model.status?.release {
+                    LabeledContent("当前版本", value: "v\(release.version)")
+                    LabeledContent("构建编号", value: "Build \(release.build)")
+                    LabeledContent("代码版本", value: release.codeLabel).textSelection(.enabled)
+                    LabeledContent("构建时间（UTC）", value: release.buildTimeLabel).textSelection(.enabled)
+                }
                 Button("停止服务并准备更新") { model.perform("prepare-update") }.disabled(model.busy || !model.saved)
                 if model.busy && AppDelegate.recoveryBusy { Button("取消更新准备") { model.cancelUpdate() } }
                 Text("先完成加密备份并保留旧程序，再退出、替换 .app 并重新启动；失败时不替换程序。需要已配置的可读备份仓库。").font(.caption).foregroundStyle(.secondary)

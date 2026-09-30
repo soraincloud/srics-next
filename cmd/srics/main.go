@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/soraincloud/srics-next/internal/atomicfile"
+	"github.com/soraincloud/srics-next/internal/buildinfo"
 	"github.com/soraincloud/srics-next/internal/library"
 	"github.com/soraincloud/srics-next/internal/localtls"
 	"github.com/soraincloud/srics-next/internal/media"
@@ -24,7 +25,7 @@ import (
 	"github.com/soraincloud/srics-next/internal/webui"
 )
 
-var version = "0.3.0-rc6"
+var version = buildinfo.Current().Version
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -42,7 +43,20 @@ func run(args []string) error {
 	case "manager":
 		return manager(ctx, args[1:])
 	case "version":
-		fmt.Println("SRICS Next", version)
+		if len(args) == 2 && args[1] == "--json" {
+			return json.NewEncoder(os.Stdout).Encode(buildinfo.Current())
+		}
+		if len(args) != 1 {
+			return errors.New("usage: srics version [--json]")
+		}
+		info := buildinfo.Current()
+		fmt.Println("SRICS Next", info.Label)
+		if info.Commit != "" {
+			fmt.Printf("Commit: %s (modified: %t)\n", info.Commit, info.Dirty)
+		}
+		if info.BuiltAt != "" {
+			fmt.Println("Built:", info.BuiltAt)
+		}
 		return nil
 	case "verify":
 		flags := flag.NewFlagSet("verify", flag.ContinueOnError)
@@ -169,7 +183,7 @@ func run(args []string) error {
 			scheme = "https"
 			listener = tls.NewListener(listener, tlsConfig)
 		}
-		fmt.Printf("SRICS Next %s\n%s://%s\n按 Ctrl+C 停止。\n", version, scheme, listener.Addr())
+		fmt.Printf("SRICS Next %s\n%s://%s\n按 Ctrl+C 停止。\n", buildinfo.Current().Label, scheme, listener.Addr())
 		err = srv.Serve(listener)
 		cancel()
 		<-done

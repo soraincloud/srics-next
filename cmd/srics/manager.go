@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/soraincloud/srics-next/internal/buildinfo"
 	"github.com/soraincloud/srics-next/internal/library"
 	"github.com/soraincloud/srics-next/internal/localtls"
 	"github.com/soraincloud/srics-next/internal/verification"
@@ -27,22 +28,23 @@ import (
 )
 
 type managerStatus struct {
-	Version          string      `json:"version"`
-	UpdateBackup     string      `json:"updateBackup"`
-	Config           localConfig `json:"config"`
-	Saved            bool        `json:"saved"`
-	Running          bool        `json:"running"`
-	PasswordSet      bool        `json:"passwordSet"`
-	VaultSet         bool        `json:"vaultSet"`
-	VaultIdleMinutes int         `json:"vaultIdleMinutes"`
-	URL              string      `json:"url"`
-	Log              string      `json:"log"`
-	LANAddresses     []string    `json:"lanAddresses"`
-	Certificate      string      `json:"certificate"`
-	CertFingerprint  string      `json:"certFingerprint"`
-	NetworkError     string      `json:"networkError"`
-	DataError        string      `json:"dataError"`
-	CloudCheck       string      `json:"cloudCheck"`
+	Version          string         `json:"version"`
+	Release          buildinfo.Info `json:"release"`
+	UpdateBackup     string         `json:"updateBackup"`
+	Config           localConfig    `json:"config"`
+	Saved            bool           `json:"saved"`
+	Running          bool           `json:"running"`
+	PasswordSet      bool           `json:"passwordSet"`
+	VaultSet         bool           `json:"vaultSet"`
+	VaultIdleMinutes int            `json:"vaultIdleMinutes"`
+	URL              string         `json:"url"`
+	Log              string         `json:"log"`
+	LANAddresses     []string       `json:"lanAddresses"`
+	Certificate      string         `json:"certificate"`
+	CertFingerprint  string         `json:"certFingerprint"`
+	NetworkError     string         `json:"networkError"`
+	DataError        string         `json:"dataError"`
+	CloudCheck       string         `json:"cloudCheck"`
 }
 
 func serviceLabel(path string) string {
@@ -56,7 +58,7 @@ func serviceLoaded(ctx context.Context, path string) bool {
 }
 func readManagerStatus(ctx context.Context, path string) (managerStatus, error) {
 	c, saved, err := loadConfig(path)
-	s := managerStatus{Version: version, Config: c, Saved: saved, VaultIdleMinutes: 10, URL: c.url(), Log: filepath.Join(filepath.Dir(path), "service.log"), LANAddresses: []string{}}
+	s := managerStatus{Version: version, Release: buildinfo.Current(), Config: c, Saved: saved, VaultIdleMinutes: 10, URL: c.url(), Log: filepath.Join(filepath.Dir(path), "service.log"), LANAddresses: []string{}}
 	if err != nil {
 		return s, err
 	}

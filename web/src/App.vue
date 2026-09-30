@@ -13,7 +13,7 @@ import { modules } from "./catalog";
 import { useVerification } from "./useVerification";
 import { useTheme } from "./useTheme";
 
-const { report, connection, error, starting, syncing, refreshing, busy, refresh, start } = useVerification();
+const { report, release, connection, error, starting, syncing, refreshing, busy, refresh, start } = useVerification();
 const { theme, toggleTheme } = useTheme();
 const route = ref(window.location.hash || "#/");
 const main = ref<HTMLElement>();
@@ -159,7 +159,7 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
         <a href="#/about" class="nav-item" :aria-current="page === 'about' ? 'page' : undefined">
           <Icon name="info" /><span>关于 SRICS</span>
         </a>
-
+        <p v-if="release" class="release-label">{{ release.label }}</p>
       </div>
     </aside>
 
@@ -273,8 +273,12 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
           <section class="page-heading"><div><h1>关于 SRICS</h1></div></section>
           <section class="about-intro panel">
             <span class="brand-mark"><Icon name="library" /></span>
-            <div><h2>SRICS Next</h2><p>管理漫画、小说、图片、个人照片与私密文件。</p></div>
+            <div><h2>SRICS Next</h2><p v-if="release" class="release-current">{{ release.label }}</p><p>管理漫画、小说、图片、个人照片与私密文件。</p></div>
           </section>
+          <dl v-if="release" class="release-metadata">
+            <div><dt>代码版本</dt><dd :title="release.commit">{{ release.commit ? release.commit.slice(0, 12) : '未记录' }}{{ release.dirty ? '（含未提交修改）' : '' }}</dd></div>
+            <div><dt>构建时间（UTC）</dt><dd>{{ release.builtAt ? release.builtAt.replace('T', ' ').replace('Z', '') : '未记录' }}</dd></div>
+          </dl>
           <div class="about-notes">
             <div><Icon name="book" /><h3>名称与标签</h3><p>漫画和小说可在新建、上传或编辑时设置标签，用逗号分隔。名称搜索和标签筛选可同时使用，多个标签需全部满足。</p></div>
             <div><Icon name="shield" /><h3>备份与恢复</h3><p>在本机程序中配置独立硬盘或云端加密备份，并单独保管恢复密钥。实际备份时间与校验结果见备份中心。</p></div>

@@ -3,6 +3,24 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 [[ "$(uname -s)" == Darwin ]] || { echo '此打包脚本需要 macOS。' >&2; exit 1; }
 if [[ "${1:-}" != --skip-build ]]; then ./scripts/build.sh; fi
+python3 - <<'PY'
+import json
+import pathlib
+import re
+import subprocess
+import sys
+
+declared = json.loads(pathlib.Path('internal/buildinfo/release.json').read_text())
+if not re.fullmatch(r'\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?', declared.get('version', '')) or type(declared.get('build')) is not int or declared['build'] < 1:
+    sys.exit('release.json 版本或构建号无效。')
+try:
+    actual = json.loads(subprocess.check_output(['bin/srics', 'version', '--json']))
+except (subprocess.CalledProcessError, json.JSONDecodeError, OSError):
+    sys.exit('无法读取服务版本，请先运行 scripts/build.sh。')
+if any(actual.get(key) != declared[key] for key in ('version', 'build')):
+    sys.exit('服务版本与 release.json 不一致，请重新构建后打包。')
+print('准备打包：' + actual['label'])
+PY
 app="${SRICS_APP_OUTPUT:-$PWD/dist/SRICS Next.app}"
 [[ "$app" = /* && "$app" = *.app ]] || { echo 'SRICS_APP_OUTPUT 需要是以 .app 结尾的绝对路径。' >&2; exit 1; }
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/bin/tools" "$app/Contents/Resources/licenses"
@@ -28,8 +46,6 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <key>CFBundleExecutable</key><string>SRICS Next</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.3.0</string>
-<key>CFBundleVersion</key><string>11</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
@@ -39,6 +55,7 @@ python3 scripts/bundle-macos-tools.py "$app/Contents/Resources"
 # executables and Homebrew libraries may require a newer macOS release.
 python3 - "$app" "$icon_workdir/icon-info.plist" <<'PY'
 import pathlib
+import json
 import plistlib
 import re
 import subprocess
@@ -68,6 +85,14 @@ with info_path.open('rb') as source:
 with pathlib.Path(sys.argv[2]).open('rb') as source:
     info.update(plistlib.load(source))
 info['LSMinimumSystemVersion'] = '.'.join(map(str, minimum))
+release = json.loads(subprocess.check_output([str(app / 'Contents/Resources/bin/srics'), 'version', '--json']))
+info['CFBundleShortVersionString'] = release['version'].split('-')[0]
+info['CFBundleVersion'] = str(release['build'])
+info['CFBundleGetInfoString'] = 'SRICS Next ' + release['label']
+info['SRICSVersion'] = release['version']
+info['SRICSCommit'] = release['commit']
+info['SRICSBuildTime'] = release['builtAt']
+(app / 'Contents/Resources/release.json').write_text(json.dumps(release, ensure_ascii=False, indent=2) + '\n')
 with info_path.open('wb') as target:
     plistlib.dump(info, target)
 print('程序包最低 macOS 版本：' + info['LSMinimumSystemVersion'])
