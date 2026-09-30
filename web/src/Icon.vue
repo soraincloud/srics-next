@@ -1,6 +1,8 @@
 <script setup lang="ts">
 defineProps<{ name: string }>();
 const paths: Record<string, string[]> = {
+  eye: ["M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12", "M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0"],
+  "eye-off": ["m3 3 18 18", "M10.6 5.1 12 5c6.5 0 10 7 10 7a19 19 0 0 1-3 3.8M6.3 6.3A21 21 0 0 0 2 12s3.5 7 10 7a12 12 0 0 0 5.7-1.7", "M9.9 9.9a3 3 0 0 0 4.2 4.2"],
   logout: ["M9 3H3v18h6", "M9 12h12m-4-4 4 4-4 4"],
   upload: ["M12 16V3m-4 4 4-4 4 4", "M4 15v6h16v-6"],
   trash: ["M3 6h18M9 6V3h6v3", "M5 6l1 15h12l1-15M10 10v7M14 10v7"],

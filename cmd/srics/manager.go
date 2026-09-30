@@ -323,6 +323,10 @@ func manager(ctx context.Context, args []string) error {
 		}
 		status.CloudCheck = message
 		return json.NewEncoder(os.Stdout).Encode(status)
+	case "reset-passwords":
+		if err := resetLocalPasswordsManager(ctx, path, os.Stdin); err != nil {
+			return err
+		}
 	case "configure":
 		if runtime.GOOS == "darwin" && serviceLoaded(ctx, path) {
 			current, err := readManagerStatus(ctx, path)

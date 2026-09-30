@@ -226,6 +226,7 @@ struct LauncherView: View {
     @StateObject private var model = Launcher()
     @State private var showRecovery = false
     @State private var showRecoveryKey = false
+    @State private var resetKind: PasswordResetKind?
     @State private var pane: LauncherPane = .service
 
     private var header: some View {
@@ -294,6 +295,15 @@ struct LauncherView: View {
                 Toggle("异常退出后自动重启", isOn: $model.config.autoRestart)
                 if model.saved { Text("资料目录已固定，迁移与恢复需单独操作。").font(.caption).foregroundStyle(.secondary) }
             }.disabled(model.busy || model.running)
+        }
+        if pane == .security && model.passwordSet {
+            GlobalCard("忘记密码", icon: "lock.rotation") {
+                HStack(spacing: 12) {
+                    Button("重设登录密码…") { resetKind = .login }
+                    if model.status?.vaultSet == true { Button("重设保险库口令…") { resetKind = .vault } }
+                }
+                Text("在本机重新设置；重设保险库口令需要恢复 JSON。").font(.caption).foregroundStyle(.secondary)
+            }.disabled(model.busy)
         }
         if pane == .security {
             GlobalCard(model.passwordSet ? "修改登录密码（可选）" : "登录密码", icon: "key") {
@@ -485,6 +495,7 @@ struct LauncherView: View {
         .task { model.refresh() }
         .sheet(isPresented: $showRecovery) { RecoveryView(config: model.config) { model.status = nil; model.refresh() } }
         .sheet(isPresented: $showRecoveryKey) { RecoveryKeyView(config: model.config) }
+        .sheet(item: $resetKind) { kind in LocalPasswordResetView(model: model, kind: kind) }
     }
 }
 @main struct SRICSLauncherApp: App {

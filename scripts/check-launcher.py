@@ -95,6 +95,25 @@ with tempfile.TemporaryDirectory(prefix='srics-launcher-test-') as temporary:
             raise AssertionError('old password remained valid after a saved change')
         except urllib.error.HTTPError as error:
             assert error.code == 401
+        # Local reset needs no old login password, stops even an auto-restarting
+        # service, and invalidates all previous browser sessions.
+        previous_password = request['password']
+        request['password'] = 'synthetic-reset-login-password'
+        assert not manager('reset-passwords', {'password': request['password']})['running']
+        assert manager('start', {'password': request['password']})['loginVerified']
+        assert not api('/api/auth')['authenticated'], 'session survived local password reset'
+        for endpoint in ('/api/auth/reset-passwords', '/api/auth/reset-password'):
+            try:
+                api(endpoint, {'password': 'must-not-reset-over-http'})
+                raise AssertionError('local reset exposed through HTTP')
+            except urllib.error.HTTPError as error:
+                assert error.code in (401, 404)
+        assert api('/api/auth/login', {'password': request['password']})['authenticated']
+        try:
+            api('/api/auth/login', {'password': previous_password})
+            raise AssertionError('old login password survived local reset')
+        except urllib.error.HTTPError as error:
+            assert error.code == 401
         assert not manager('stop')['running']
         assert request['password'] not in config_path.read_text()
         assert request['password'] not in (root / 'service.log').read_text()
@@ -112,6 +131,6 @@ with tempfile.TemporaryDirectory(prefix='srics-launcher-test-') as temporary:
         assert len(record['snapshot']) == 64 and pathlib.Path(record['previousApp']).is_dir()
         assert (update_dir / 'config.json').stat().st_mode & 0o777 == 0o600
         assert manager('start')['running'], 'could not restart after update preparation'
-        print('PASS: first setup + verified login, verification failure stops service, Unicode password change + old password rejected, crash restart, update backup + retained app + restart, port conflict, background lifetime, duplicate start/stop, web setup removal, configuration lock, session invalidation')
+        print('PASS: first setup + verified login, verification failure stops service, Unicode password change + old password rejected, local reset + no HTTP reset + session invalidation, crash restart, update backup + retained app + restart, port conflict, background lifetime, duplicate start/stop, web setup removal, configuration lock, session invalidation')
     finally:
         manager('stop')

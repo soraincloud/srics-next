@@ -98,7 +98,7 @@ onUnmounted(() => window.removeEventListener("blur", hidePassword));
             placeholder="请输入密码"
             autofocus
         />
-        <button type="button" class="password-toggle" :aria-label="showPassword ? '隐藏登录密码' : '显示登录密码'" :aria-pressed="showPassword" @click="showPassword = !showPassword">{{ showPassword ? '隐藏' : '显示' }}</button>
+        <button type="button" class="password-toggle" :aria-label="showPassword ? '隐藏登录密码' : '显示登录密码'" :aria-pressed="showPassword" :title="showPassword ? '隐藏登录密码' : '显示登录密码'" @click="showPassword = !showPassword"><Icon :name="showPassword ? 'eye-off' : 'eye'" /></button>
         </div>
         <p id="login-password-hint" class="password-hint">使用本机程序中设置的登录密码；保险库口令用于解锁私密资料。</p>
         <p v-if="capsLock" class="password-hint" role="status">大写锁定已开启</p>
