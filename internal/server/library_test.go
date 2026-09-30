@@ -158,6 +158,26 @@ func TestLibraryHTTPAuthenticationAndFlow(t *testing.T) {
 	}
 	if cwebp != "" {
 		comic := put("comics", "我的漫画")
+		checkTags := func(query string, want int) {
+			t.Helper()
+			status, body := call("GET", "/api/library?module=comics&"+query, nil, nil)
+			if err := json.Unmarshal(body, &listing); err != nil || status != 200 || len(listing.Items) != want {
+				t.Fatalf("comic filter %q: status=%d body=%s err=%v", query, status, body, err)
+			}
+		}
+		checkTags("q=我的&tag=测试&tag=标签", 1)
+		checkTags("tag=测试&tag=不存在", 0)
+		patch, _ := json.Marshal(map[string]any{"name": "更新漫画", "tags": []string{"冒险", " 日常 ", "冒险"}, "revision": comic.Revision})
+		code, data = call("PATCH", "/api/items/"+comic.ID, patch, nil)
+		if code != 200 {
+			t.Fatal("comic metadata update", code, string(data))
+		}
+		checkTags("q=更新&tag=冒险&tag=日常", 1)
+		if listing.Items[0].Name != "更新漫画" || len(listing.Items[0].Tags) != 2 {
+			t.Fatal("updated name or cleaned tags were not persisted")
+		}
+		checkTags("tag=测试", 0)
+		checkTags("q=我的&tag=冒险", 0)
 		code, data = call("GET", "/api/library?module=comics&q="+"不存在", nil, nil)
 		json.Unmarshal(data, &listing)
 		if code != 200 || len(listing.Items) != 0 {

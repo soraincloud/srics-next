@@ -9,7 +9,7 @@ import { canNavigate } from "./navigation";
 import LibraryTools from "./LibraryTools.vue";
 import { api, authenticated, fileSize } from "./api";
 import { clearUploadMemory } from "./uploads";
-import { modules, stages } from "./catalog";
+import { modules } from "./catalog";
 import { useVerification } from "./useVerification";
 import { useTheme } from "./useTheme";
 
@@ -20,7 +20,6 @@ const main = ref<HTMLElement>();
 const expanded = ref(new Set<string>());
 const activeModule = computed(() => modules.find((item) => route.value === "#/library/" + item.id || route.value.startsWith("#/library/" + item.id + "/")));
 const itemId = computed(() => route.value.split("/")[3]);
-const available = ["comics", "images", "photos", "novels", "private", "files"];
 const stats = ref<{counts:Record<string,number>;size:number}>({counts:{},size:0});
 async function loadStats(){ try { stats.value = await api("/api/library/stats"); } catch {} }
 async function logout(){ if (!(await canNavigate())) return; try { await api("/api/auth/logout",{method:"POST"}); clearUploadMemory(); authenticated.value=false; } catch { window.alert("退出失败，请检查连接后重试。"); } }
@@ -28,7 +27,7 @@ const page = computed(() => activeModule.value ? "module"
   : route.value === "#/verify" ? "verify" : route.value === "#/about" ? "about"
   : route.value === "#/trash" ? "trash" : route.value === "#/backup" ? "backup" : route.value === "#/" ? "library" : "missing");
 const title = computed(() => activeModule.value?.name
-  || ({ library: "资料库", trash: "回收站", backup: "备份中心", verify: "恢复验证", about: "关于此版本", missing: "页面不存在" } as Record<string, string>)[page.value]);
+  || ({ library: "资料库", trash: "回收站", backup: "备份中心", verify: "样本自检", about: "关于 SRICS", missing: "页面不存在" } as Record<string, string>)[page.value]);
 const inLibrary = computed(() => page.value === "library" || page.value === "module");
 const passed = computed(() => report.value?.checks.filter((item) => item.status === "passed").length || 0);
 const total = computed(() => report.value?.checks.length || 11);
@@ -38,9 +37,9 @@ const complete = computed(() => !busy.value && ["passed", "failed"].includes(rep
 const status = computed(() => connection.value === "offline" ? "offline"
   : starting.value || syncing.value ? "running" : report.value?.status || "idle");
 const statusTitle = computed(() => ({
-  idle: "尚未运行验证",
-  running: starting.value ? "正在启动验证" : syncing.value ? "正在同步验证进度" : "正在验证恢复能力",
-  passed: "恢复验证通过",
+  idle: "尚未运行自检",
+  running: starting.value ? "正在启动验证" : syncing.value ? "正在同步验证进度" : "正在检查备份恢复流程",
+  passed: "样本自检通过",
   failed: "有一项验证需要处理",
   offline: "与本机服务的连接已中断",
 })[status.value]);
@@ -134,7 +133,7 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
       </div>
     </header>
     <aside class="sidebar">
-      <div class="workspace-identity"><span class="workspace-avatar">S</span><div><strong>我的空间</strong><span>本机资料库 <span class="version-label">RC1</span></span></div></div>
+      <div class="workspace-identity"><span class="workspace-avatar">S</span><div><strong>我的空间</strong><span>本机资料库</span></div></div>
       <nav class="sidebar-nav" aria-label="主导航">
         <a href="#/" class="nav-item" :aria-current="page === 'library' ? 'page' : undefined">
           <Icon name="library" /><span>资料库</span>
@@ -154,13 +153,13 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
         <a href="#/backup" class="nav-item" :aria-current="page === 'backup' ? 'page' : undefined"><Icon name="shield" /><span>备份中心</span></a>
         <a href="#/trash" class="nav-item" :aria-current="page === 'trash' ? 'page' : undefined"><Icon name="trash" /><span>回收站</span></a>
         <a href="#/verify" class="nav-item" :aria-current="page === 'verify' ? 'page' : undefined">
-          <Icon name="shield" /><span>样本验证</span>
+          <Icon name="shield" /><span>样本自检</span>
           <span v-if="busy" class="nav-activity" aria-label="验证进行中"></span>
         </a>
         <a href="#/about" class="nav-item" :aria-current="page === 'about' ? 'page' : undefined">
-          <Icon name="info" /><span>关于此版本</span><span class="version-label">RC1</span>
+          <Icon name="info" /><span>关于 SRICS</span>
         </a>
-        <div class="local-note"><Icon name="computer" /><span>0.3.0 · 验收版</span></div>
+
       </div>
     </aside>
 
@@ -193,23 +192,23 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
           <div class="section-heading library-section-heading"><h2>资料空间</h2><span class="quiet-badge">6 个独立空间</span></div>
           <div class="library-grid">
             <a v-for="item in modules" :key="item.id" :href="'#/library/' + item.id"
-              class="library-card" :aria-label="item.name + (available.includes(item.id) ? '，打开资料空间' : '，查看功能计划')">
+              class="library-card" :aria-label="item.name + '，打开资料空间'">
               <div class="card-top">
                 <span class="module-icon"><Icon :name="item.icon" /></span>
-                <span class="coming-soon" :class="{available:available.includes(item.id)}">{{ ['private','files'].includes(item.id) ? '保险库' : (stats.counts[item.id] || 0) + ' 项' }}</span>
+                <span class="collection-count">{{ ['private','files'].includes(item.id) ? '保险库' : (stats.counts[item.id] || 0) + ' 项' }}</span>
               </div>
               <h2>{{ item.name }}</h2>
               <p class="card-description">{{ item.sub }}</p>
               <div class="card-meta"><span>{{ item.kind }}</span><span class="card-arrow"><Icon name="arrow" /></span></div>
             </a>
           </div>
-          <p class="library-note"><Icon name="info" />私密照片与个人文件需要独立解锁。<a href="#/about">查看开发计划<Icon name="chevron-right" /></a></p>
-          <p class="page-footnote"><Icon name="computer" />仅在本机运行 · 文件保存在你的设备上</p>
+          <p class="library-note"><Icon name="info" />私密照片与个人文件需要独立解锁。</p>
+          <p class="page-footnote"><Icon name="computer" />文件保存在资料库所在的设备上</p>
         </template>
 
         <template v-else-if="page === 'verify'">
           <section class="page-heading">
-            <div><h1>恢复验证</h1><p class="subtitle">检查从文件保存到备份取回的完整流程。</p></div>
+            <div><h1>样本自检</h1><p class="subtitle">使用临时样本检查保存、加密和恢复流程，不代表你的资料已备份。</p></div>
           </section>
           <section class="verification-summary panel" :class="status" aria-labelledby="verification-heading">
             <div class="summary-top">
@@ -267,46 +266,22 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
 
         <PrivateView v-else-if="activeModule && ['private','files'].includes(activeModule.id)" :key="activeModule.id" :module="activeModule.id" />
         <NovelView v-else-if="activeModule?.id === 'novels'" :key="itemId || 'novel-list'" :item-id="itemId" />
-        <LibraryView v-else-if="activeModule && available.includes(activeModule.id)" :module="activeModule.id" :item-id="itemId" :name="activeModule.name" :sub="activeModule.sub" />
+        <LibraryView v-else-if="activeModule" :module="activeModule.id" :item-id="itemId" :name="activeModule.name" :sub="activeModule.sub" />
         <LibraryTools v-else-if="page === 'trash' || page === 'backup'" :page="page" />
 
-        <template v-else-if="activeModule">
-          <section class="page-heading module-heading">
-            <span class="module-icon large"><Icon :name="activeModule.icon" /></span>
-            <div><p class="eyebrow">我的资料库</p><h1>{{ activeModule.name }}</h1><p class="subtitle">{{ activeModule.sub }}</p></div>
-          </section>
-          <section class="module-empty panel">
-            <span class="empty-icon"><Icon name="clock" /></span>
-            <h2>功能开发中</h2>
-            <p>{{ activeModule.name }}暂未开放。</p>
-            <a href="#/about" class="button primary">查看开发计划<Icon name="chevron-right" /></a>
-            <a href="#/" class="text-link">返回资料库</a>
-          </section>
-          <section class="planned-features" aria-labelledby="features-heading">
-            <div class="section-heading"><h2 id="features-heading">将会支持</h2><span>已确定的功能范围</span></div>
-            <ul class="feature-grid"><li v-for="(feature, index) in activeModule.features" :key="feature"><span>{{ String(index + 1).padStart(2, "0") }}</span>{{ feature }}</li></ul>
-          </section>
-        </template>
-
         <template v-else-if="page === 'about'">
-          <section class="page-heading"><div><h1>关于此版本</h1></div><span class="quiet-badge">RC1</span></section>
+          <section class="page-heading"><div><h1>关于 SRICS</h1></div></section>
           <section class="about-intro panel">
             <span class="brand-mark"><Icon name="library" /></span>
-            <div><h2>SRICS Next</h2><p>当前可以导入漫画、浏览图片、保存照片原件，以及从回收站恢复内容。登录、可重试上传和本地加密备份已接入；小说编辑与阅读、私密照片和个人文件也已接入。</p></div>
-          </section>
-          <section aria-labelledby="roadmap-heading">
-            <div class="section-heading"><h2 id="roadmap-heading">开发计划</h2><span>功能收尾 · 待验收</span></div>
-            <ol class="roadmap panel">
-              <li v-for="stage in stages" :key="stage.id" :class="{ current: stage.id === 'M5' }">
-                <span class="stage-number">{{ stage.id }}</span><div><h3>{{ stage.name }}</h3><p>{{ stage.detail }}</p></div><span class="stage-state">{{ stage.state }}</span>
-              </li>
-            </ol>
+            <div><h2>SRICS Next</h2><p>管理漫画、小说、图片、个人照片与私密文件。</p></div>
           </section>
           <div class="about-notes">
-            <div><Icon name="computer" /><h3>运行方式</h3><p>通过本机程序配置和启停服务，选择局域网 HTTPS、本地与 S3 云端加密备份。</p></div>
-            <div><Icon name="shield" /><h3>恢复验证</h3><p>验证报告可下载留存。服务重启后，最近一次结果会清空。</p></div>
+            <div><Icon name="book" /><h3>名称与标签</h3><p>漫画和小说可在新建、上传或编辑时设置标签，用逗号分隔。名称搜索和标签筛选可同时使用，多个标签需全部满足。</p></div>
+            <div><Icon name="shield" /><h3>备份与恢复</h3><p>在本机程序中配置独立硬盘或云端加密备份，并单独保管恢复密钥。实际备份时间与校验结果见备份中心。</p></div>
+            <div><Icon name="lock" /><h3>私密空间</h3><p>私密照片与个人文件需使用保险库口令独立解锁。离开时可手动锁定，闲置后也会自动锁定。</p></div>
+            <div><Icon name="computer" /><h3>样本自检</h3><p>只使用临时样本，不读取你的资料。自检通过不能替代真实备份及恢复检查。</p></div>
           </div>
-          <a href="#/verify" class="text-link">打开恢复验证<Icon name="arrow" /></a>
+          <a href="#/verify" class="text-link">打开样本自检<Icon name="arrow" /></a>
         </template>
 
         <section v-else class="module-empty panel">

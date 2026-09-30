@@ -87,7 +87,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.mu.RLock()
 		defer s.mu.RUnlock()
-		writeJSON(w, http.StatusOK, map[string]any{"stage": "M0", "mode": "local-verification", "report": s.report})
+		writeJSON(w, http.StatusOK, map[string]any{"report": s.report})
 	case "/api/verification":
 		if r.Method != http.MethodPost {
 			methodNotAllowed(w, "POST")

@@ -140,7 +140,7 @@ onUnmounted(() => {
           @input="search" /></label
       ><span class="subtle-copy">{{ total }} 本</span>
     </div>
-    <div v-if="tags.length" class="tag-filters">
+    <div v-if="tags.length" class="tag-filters" aria-label="标签筛选">
       <button
         v-for="t in tags"
         :key="t"
@@ -156,7 +156,7 @@ onUnmounted(() => {
         "
       >
         清除标签
-      </button>
+      </button><span v-if="selected.length">同时满足所选标签</span>
     </div>
     <div class="novel-grid">
       <a

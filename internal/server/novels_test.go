@@ -81,6 +81,15 @@ func TestNovelHTTPFlowAndAccess(t *testing.T) {
 	if len(list.Items) != 0 {
 		t.Fatal("tag AND filter ignored")
 	}
+	json.Unmarshal(request("PATCH", "/api/items/"+id, map[string]any{"name": book.Name, "tags": []string{"悬疑", " 短篇 ", "悬疑"}, "revision": book.Revision}, 200), &book)
+	json.Unmarshal(request("GET", "/api/library?module=novels&q=夜航&tag=悬疑&tag=短篇", nil, 200), &list)
+	if len(list.Items) != 1 || len(list.Items[0].Tags) != 2 {
+		t.Fatal("edited novel tags not searchable or not deduplicated")
+	}
+	json.Unmarshal(request("GET", "/api/library?module=novels&tag=科幻", nil, 200), &list)
+	if len(list.Items) != 0 {
+		t.Fatal("removed tag still matches novel")
+	}
 	var chapter library.Chapter
 	json.Unmarshal(request("POST", base+"/chapters", map[string]any{"id": library.NewID(), "title": "第一章", "body": "<script>不会执行</script>\n正文", "revision": book.Revision}, 200), &chapter)
 	cp := base + "/chapters/" + chapter.ID

@@ -142,7 +142,7 @@ h1::after { content: ""; position: absolute; bottom: 0; left: 0; width: 64px; he
 .card-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .module-icon { display: inline-grid; place-items: center; width: 42px; height: 42px; border-radius: 13px; border: 2px solid var(--line); background: var(--surface-soft); color: var(--strong); flex: none; }
 .module-icon svg { width: 22px; height: 22px; stroke-width: 2.2; }
-.coming-soon { padding: 4px 8px; border-radius: 999px; border: 1px solid var(--line); font-size: 10px; font-weight: 620; color: var(--secondary); background: var(--surface-soft); white-space: nowrap; }
+.collection-count { padding: 4px 8px; border-radius: 999px; border: 1px solid var(--line); font-size: 10px; font-weight: 620; color: var(--secondary); background: var(--surface-soft); white-space: nowrap; }
 .library-card h2 { font-size: 19px; font-weight: 750; line-height: 1.4; color: var(--strong); }
 .card-description { color: var(--secondary); font-size: 12px; font-weight: 500; line-height: 1.75; margin-top: 7px; }
 .card-meta { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; font-weight: 550; line-height: 1.5; }
@@ -235,23 +235,11 @@ progress::-moz-progress-bar { background: var(--strong); border-radius: 6px; }
 .text-link svg { width: 15px; height: 15px; }
 .text-link:hover, .library-note a:hover { text-decoration: underline; text-underline-offset: 4px; }
 .module-empty .text-link { margin-top: 8px; }
-.feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 0; margin: 0; list-style: none; }
-.feature-grid li { display: flex; align-items: center; gap: 12px; padding: 17px 20px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); font-size: 13px; font-weight: 550; line-height: 1.7; }
-.feature-grid li > span { color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
 .about-intro { display: flex; align-items: center; gap: 24px; padding: 28px; }
 .about-intro .brand-mark { width: 60px; height: 60px; }
 .about-intro .brand-mark svg { width: 28px; height: 28px; }
 .about-intro h2 { color: var(--strong); font-size: 22px; font-weight: 760; }
 .about-intro p { max-width: 600px; color: var(--secondary); font-size: 13px; line-height: 1.9; margin-top: 9px; }
-.roadmap { list-style: none; margin: 0; padding: 0 24px; }
-.roadmap li { display: flex; align-items: center; gap: 18px; padding: 22px 0; }
-.roadmap li + li { border-top: 1px solid var(--line); }
-.stage-number { width: 38px; height: 38px; display: grid; place-items: center; flex: none; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-soft); color: var(--secondary); font-size: 12px; font-weight: 650; }
-.current .stage-number { background: var(--strong); color: var(--inverse); }
-.roadmap h3 { font-size: 14px; font-weight: 650; line-height: 1.7; }
-.roadmap p { font-size: 12px; color: var(--secondary); line-height: 1.7; margin-top: 3px; }
-.stage-state { margin-left: auto; font-size: 11px; font-weight: 550; white-space: nowrap; color: var(--secondary); }
-.current .stage-state { color: var(--strong); font-weight: 700; }
 .about-notes { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin: 28px 4px 12px; }
 .about-notes svg { color: var(--strong); margin-bottom: 10px; width: 23px; height: 23px; }
 .about-notes h3 { font-size: 14px; font-weight: 700; }
@@ -325,8 +313,6 @@ progress::-moz-progress-bar { background: var(--strong); border-radius: 6px; }
   .module-heading { gap: 16px; }
   .module-empty { padding: 36px 20px 28px; }
   .module-empty h2 { font-size: 19px; }
-  .feature-grid { grid-template-columns: 1fr; gap: 10px; }
-  .feature-grid li { padding: 16px; }
 }
 @media (max-width: 440px) {
   .app-header { padding-inline: 18px; }
@@ -342,7 +328,7 @@ progress::-moz-progress-bar { background: var(--strong); border-radius: 6px; }
   .card-top { gap: 7px; margin-bottom: 13px; }
   .module-icon { width: 37px; height: 37px; border-radius: 11px; }
   .module-icon svg { width: 20px; height: 20px; }
-  .coming-soon { font-size: 9px; padding: 3px 6px; }
+  .collection-count { font-size: 9px; padding: 3px 6px; }
   .library-card h2 { font-size: 17px; }
   .card-description { font-size: 12px; min-height: 42px; }
   .card-meta { margin-top: 14px; font-size: 10px; gap: 4px; }
@@ -370,11 +356,6 @@ progress::-moz-progress-bar { background: var(--strong); border-radius: 6px; }
   .disclosure { width: 11px; height: 11px; }
   .check-detail { padding: 0 18px 18px 49px; font-size: 12px; }
   .about-intro { padding: 24px; flex-direction: column; align-items: flex-start; gap: 20px; }
-  .roadmap { padding-inline: 16px; }
-  .roadmap li { gap: 12px; flex-wrap: wrap; padding-block: 20px; }
-  .roadmap li > div { width: calc(100% - 50px); }
-  .stage-state { margin-left: 50px; }
-  .roadmap p { font-size: 11px; }
   .about-notes { gap: 20px; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -412,7 +393,6 @@ button:disabled { opacity: .45; }
 .library-stat { display: grid; gap: 9px; white-space: nowrap; }
 .library-stat strong { font-size: 25px; letter-spacing: -1px; }
 .library-stat span { color: var(--muted); font-size: 11px; }
-.coming-soon.available { color: var(--secondary); background: var(--active); }
 .collection-toolbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 22px; }
 .upload-actions { margin-left: auto; }
 .search-field { display: flex; align-items: center; position: relative; width: min(100%,340px); }
