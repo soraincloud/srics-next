@@ -77,6 +77,10 @@ with tempfile.TemporaryDirectory(prefix='srics-launcher-test-') as temporary:
             assert error.code == 404
         assert api('/api/auth/login', {'password':request['password']})['authenticated']
         assert api('/api/auth')['authenticated']
+        for extra in ({'recoveryKeyFile': '/unused-recovery.json'}, {'vaultPassword': 'must-not-be-saved'}):
+            manager('reset-passwords', {'password': 'must-not-be-saved', **extra}, success=False)
+            assert manager('info')['running'], 'rejected reset stopped the service'
+            assert api('/api/auth')['authenticated'], 'rejected reset invalidated session'
         manager('configure', request, success=False)
         assert not manager('stop')['running']
         assert not manager('stop')['running'], 'repeated stop failed'
@@ -145,7 +149,7 @@ with tempfile.TemporaryDirectory(prefix='srics-launcher-test-') as temporary:
         assert len(record['snapshot']) == 64 and pathlib.Path(record['previousApp']).is_dir()
         assert (update_dir / 'config.json').stat().st_mode & 0o777 == 0o600
         assert manager('start')['running'], 'could not restart after update preparation'
-        print('PASS: first setup + verified login, verification failure stops service, Unicode password change + old password rejected, local reset + no HTTP reset + session invalidation, migration + retained source + new path login, crash restart, update backup + retained app + restart, port conflict, background lifetime, duplicate start/stop, web setup removal, configuration lock, session invalidation')
+        print('PASS: first setup + verified login, verification failure stops service, Unicode password change + old password rejected, local login reset + rejects JSON/vault fields + no HTTP reset + session invalidation, migration + retained source + new path login, crash restart, update backup + retained app + restart, port conflict, background lifetime, duplicate start/stop, web setup removal, configuration lock, session invalidation')
     finally:
         try:
             manager('stop')

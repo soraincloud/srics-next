@@ -39,7 +39,7 @@ func TestLocalPasswordResetPreservesPrivateDataAndRecovery(t *testing.T) {
 	}
 	a := vault.NewAccess(ctx, identity, time.Hour)
 	defer a.Lock()
-	original := []byte("synthetic private original survives resetting both forgotten passwords")
+	original := []byte("synthetic private original survives independent password management")
 	item, err := l.ReceivePrivate(ctx, a, library.NewID(), "files", "secret.txt", int64(len(original)), bytes.NewReader(original))
 	if err != nil {
 		t.Fatal(err)
@@ -64,38 +64,57 @@ func TestLocalPasswordResetPreservesPrivateDataAndRecovery(t *testing.T) {
 	if err := os.WriteFile(keyPath, keyJSON, 0600); err != nil {
 		t.Fatal(err)
 	}
-	// A wrong library key must not partially reset the login password.
-	key.LibraryID = library.NewID()
-	wrongJSON, _ := json.Marshal(key)
-	wrongPath := filepath.Join(root, "wrong.json")
-	if err := os.WriteFile(wrongPath, wrongJSON, 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := resetLocalPasswords(ctx, l, localPasswordReset{Password: "new-login-password", VaultPassword: "new-vault-password", RecoveryKeyFile: wrongPath}); err == nil {
-		t.Fatal("accepted foreign key")
+	// The daily reset endpoint accepts login passwords only. Old clients cannot
+	// use recovery JSON or vault-password fields to alter a live library.
+	for _, request := range []string{
+		`{"password":"must-not-be-saved","recoveryKeyFile":"` + keyPath + `"}`,
+		`{"password":"must-not-be-saved","vaultPassword":"must-not-be-saved"}`,
+	} {
+		if err := resetLocalPasswordsManager(ctx, path, strings.NewReader(request)); err == nil {
+			t.Fatal("daily reset accepted backup recovery or vault fields")
+		}
 	}
 	currentHash, _ := l.Setting("password")
 	currentWrapped, _ := l.Setting("vault-key")
 	if !bytes.Equal(currentHash, oldHash) || !bytes.Equal(currentWrapped, oldWrapped) {
-		t.Fatal("failed reset changed credentials")
+		t.Fatal("rejected reset changed credentials")
 	}
-	// Login-only reset never needs the vault credential or changes its wrapping.
-	if err := resetLocalPasswords(ctx, l, localPasswordReset{Password: "new-login-password"}); err != nil {
+	newLogin := " 新-login-cafe\u0301-🔑-password "
+	if err := resetLocalPasswords(ctx, l, localPasswordReset{Password: newLogin}); err != nil {
+		t.Fatal(err)
+	}
+	currentHash, _ = l.Setting("password")
+	currentWrapped, _ = l.Setting("vault-key")
+	if bcrypt.CompareHashAndPassword(currentHash, []byte(newLogin)) != nil || !bytes.Equal(currentWrapped, oldWrapped) {
+		t.Fatal("login reset failed or altered vault")
+	}
+	if err = l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Normal vault changes require the current vault password, never JSON.
+	for _, wrong := range []string{"", "wrong-vault-password", key.Secret} {
+		err = applyConfig(path, configureRequest{Config: c, VaultPassword: "new-vault-password", CurrentVaultPassword: wrong})
+		if err == nil {
+			t.Fatal("vault change accepted without old vault password")
+		}
+	}
+	l, err = library.Open(c.Data)
+	if err != nil {
 		t.Fatal(err)
 	}
 	currentWrapped, _ = l.Setting("vault-key")
 	if !bytes.Equal(currentWrapped, oldWrapped) {
-		t.Fatal("login reset changed vault")
+		t.Fatal("failed vault change altered wrapping")
 	}
-	// Reset both with the matching offline JSON, without either old password.
-	newLogin := " 新-login-cafe\u0301-🔑-password "
-	if err := resetLocalPasswords(ctx, l, localPasswordReset{Password: newLogin, VaultPassword: "new-vault-password", RecoveryKeyFile: keyPath}); err != nil {
+	l.Close()
+	if err = applyConfig(path, configureRequest{Config: c, VaultPassword: "new-vault-password", CurrentVaultPassword: "old-vault-password"}); err != nil {
 		t.Fatal(err)
 	}
-	currentHash, _ = l.Setting("password")
-	if bcrypt.CompareHashAndPassword(currentHash, []byte(newLogin)) != nil || bcrypt.CompareHashAndPassword(currentHash, []byte("new-login-password")) == nil {
-		t.Fatal("login reset failed")
+	l, err = library.Open(c.Data)
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer l.Close()
 	currentWrapped, _ = l.Setting("vault-key")
 	newIdentity, err := vault.Unlock(currentWrapped, "new-vault-password")
 	if err != nil {
@@ -126,45 +145,31 @@ func TestLocalPasswordResetPreservesPrivateDataAndRecovery(t *testing.T) {
 	if !bytes.Equal(cipherBefore, cipherAfter) {
 		t.Fatal("ciphertext was rewritten")
 	}
+	// Password management must preserve emergency backup recovery material.
 	recovery, err := recoveryKeyAccess(ctx, l, keyPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer recovery.Lock()
 	if err := verifyPrivateContents(ctx, l, recovery); err != nil {
-		t.Fatal("original recovery key stopped working", err)
+		t.Fatal("recovery material no longer decrypts data", err)
 	}
 	recordAfter, _ := l.Setting("recovery-key-" + key.ID)
-	if !bytes.Equal(recordAfter, recordJSON) {
-		t.Fatal("recovery record changed")
-	}
-	// Vault-only reset leaves login hash unchanged.
-	if err := resetLocalPasswords(ctx, l, localPasswordReset{VaultPassword: "second-new-vault-password", RecoveryKeyFile: keyPath}); err != nil {
-		t.Fatal(err)
+	keyAfter, _ := os.ReadFile(keyPath)
+	if !bytes.Equal(recordAfter, recordJSON) || !bytes.Equal(keyAfter, keyJSON) {
+		t.Fatal("password change altered recovery record or JSON")
 	}
 	hashAfter, _ := l.Setting("password")
 	if !bytes.Equal(hashAfter, currentHash) {
-		t.Fatal("vault-only reset changed login")
+		t.Fatal("vault change altered login")
 	}
 }
 func TestLocalPasswordResetValidation(t *testing.T) {
-	for _, tc := range []struct {
-		req   localPasswordReset
-		field string
-	}{
-		{localPasswordReset{Password: "short"}, "password"},
-		{localPasswordReset{Password: "password-with-newline\n"}, "password"},
-		{localPasswordReset{VaultPassword: "short"}, "vaultPassword"},
-		{localPasswordReset{VaultPassword: "long-enough-vault\r"}, "vaultPassword"},
-		{localPasswordReset{VaultPassword: "long-enough-vault"}, "recoveryKeyFile"},
-	} {
+	for _, password := range []string{"", "short", "password-with-newline\n", strings.Repeat("x", 73)} {
 		var issue *fieldError
-		if err := tc.req.validate(); !errors.As(err, &issue) || issue.Field != tc.field {
+		if err := (localPasswordReset{Password: password}).validate(); !errors.As(err, &issue) || issue.Field != "password" {
 			t.Fatal("wrong validation field", err)
 		}
-	}
-	if (localPasswordReset{}).validate() == nil {
-		t.Fatal("accepted empty request")
 	}
 	if err := resetLocalPasswordsManager(context.Background(), filepath.Join(t.TempDir(), "missing.json"), strings.NewReader(`{"password":"synthetic-password"}`)); err == nil {
 		t.Fatal("reset initialized missing library")

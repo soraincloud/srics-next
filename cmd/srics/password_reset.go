@@ -9,32 +9,19 @@ import (
 	"unicode/utf8"
 
 	"github.com/soraincloud/srics-next/internal/library"
-	"github.com/soraincloud/srics-next/internal/vault"
 	"golang.org/x/crypto/bcrypt"
 )
 
-// This is a local owner operation over stdin, never an HTTP endpoint. Login
-// reset relies on local filesystem authority; vault reset requires its recovery key.
+// Login reset is a local owner operation over stdin, never an HTTP endpoint.
+// Vault changes use configure with the current vault password. Recovery JSON
+// belongs only to backup recovery and is not accepted by this request.
 type localPasswordReset struct {
-	Password        string `json:"password"`
-	VaultPassword   string `json:"vaultPassword"`
-	RecoveryKeyFile string `json:"recoveryKeyFile"`
+	Password string `json:"password"`
 }
 
 func (r localPasswordReset) validate() error {
-	if r.Password == "" && r.VaultPassword == "" {
-		return errors.New("请选择要重设的密码并填写新密码")
-	}
-	if r.Password != "" && (strings.ContainsAny(r.Password, "\r\n") || utf8.RuneCountInString(r.Password) < 12 || len(r.Password) > 72) {
+	if strings.ContainsAny(r.Password, "\r\n") || utf8.RuneCountInString(r.Password) < 12 || len(r.Password) > 72 {
 		return &fieldError{Field: "password", Message: "新登录密码至少 12 个字符，最多 72 字节，不能包含换行符"}
-	}
-	if r.VaultPassword != "" {
-		if strings.ContainsAny(r.VaultPassword, "\r\n") || len(r.VaultPassword) < 12 || len(r.VaultPassword) > 1024 {
-			return &fieldError{Field: "vaultPassword", Message: "新保险库口令需为 12–1024 字节，不能包含换行符"}
-		}
-		if r.RecoveryKeyFile == "" {
-			return &fieldError{Field: "recoveryKeyFile", Message: "请选择此资料库的恢复 JSON"}
-		}
 	}
 	return nil
 }
@@ -42,37 +29,14 @@ func resetLocalPasswords(ctx context.Context, l *library.Library, r localPasswor
 	if err := r.validate(); err != nil {
 		return err
 	}
-	values := map[string][]byte{}
-	if r.VaultPassword != "" {
-		a, err := recoveryKeyAccess(ctx, l, r.RecoveryKeyFile)
-		if err != nil {
-			return &fieldError{Field: "recoveryKeyFile", Message: err.Error()}
-		}
-		if a == nil {
-			return &fieldError{Field: "recoveryKeyFile", Message: "此资料库尚未设置保险库，无需重设口令"}
-		}
-		defer a.Lock()
-		identity, _, _, err := a.Snapshot()
-		if err != nil {
-			return err
-		}
-		values["vault-key"], err = vault.Wrap(identity, r.VaultPassword)
-		if err != nil {
-			return err
-		}
-	}
-	if r.Password != "" {
-		hash, err := bcrypt.GenerateFromPassword([]byte(r.Password), 12)
-		if err != nil {
-			return err
-		}
-		values["password"] = hash
+	hash, err := bcrypt.GenerateFromPassword([]byte(r.Password), 12)
+	if err != nil {
+		return err
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	// Both changes commit together, only after recovery validation succeeds.
-	return l.SetSettings(values)
+	return l.SetSettings(map[string][]byte{"password": hash})
 }
 func resetLocalPasswordsManager(ctx context.Context, path string, input io.Reader) error {
 	var r localPasswordReset

@@ -19,7 +19,7 @@ struct RecoveryResetView: View {
         guard valid && !busy else { return }
         let request = RecoveryRequest(source: source, directory: result.directory, newPassword: password, newVaultPassword: vaultPassword)
         guard let payload = try? JSONEncoder().encode(request) else { return }
-        let command = RecoveryProcess(); process = command; busy = true; message = "正在验证恢复密钥并保存新密码…"; AppDelegate.recoveryBusy = true
+        let command = RecoveryProcess(); process = command; busy = true; message = "正在解锁备份中的私密资料并配置恢复副本…"; AppDelegate.recoveryBusy = true
         Task {
             do {
                 let response = try await Task.detached { try command.run("recovery-reset-passwords", payload: payload, as: RecoveryResponse.self) }.value
@@ -31,8 +31,8 @@ struct RecoveryResetView: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            GlobalHeading(title: "设置恢复后的密码", icon: "lock.rotation")
-            Text("使用恢复密钥验证身份，只修改已恢复的副本。原资料库和历史备份保持原样。").font(.callout).foregroundStyle(.secondary)
+            GlobalHeading(title: "配置恢复后的资料库", icon: "lock.rotation")
+            Text("备份已恢复到新目录。为新资料库设置登录密码与保险库口令；恢复 JSON 仅用于解开备份中的私密资料，不修改原资料库。").font(.callout).foregroundStyle(.secondary)
             PasswordField(title: "新登录密码", text: $password, placeholder: "12–72 字节，用于浏览器登录", error: password.contains("\n") || password.contains("\r") ? "登录密码不能包含换行符。" : nil)
             PasswordField(title: "确认登录密码", text: $repeated, error: !repeated.isEmpty && !password.utf8.elementsEqual(repeated.utf8) ? "两次登录密码不一致。" : nil)
             if result.vaultPresent {
@@ -46,7 +46,7 @@ struct RecoveryResetView: View {
                 if busy { ProgressView().controlSize(.small) }
                 Spacer()
                 Button("取消") { dismiss() }.disabled(busy)
-                Button("验证并保存密码") { reset() }.disabled(busy || !valid).buttonStyle(RecoveryActionStyle())
+                Button("保存新资料库密码") { reset() }.disabled(busy || !valid).buttonStyle(RecoveryActionStyle())
             }
         }.padding(24).frame(width: 600).background(GlobalPalette.background).foregroundStyle(GlobalPalette.ink)
             .buttonStyle(GlobalButtonStyle()).textFieldStyle(GlobalTextFieldStyle()).interactiveDismissDisabled(busy)

@@ -227,7 +227,7 @@ struct LauncherView: View {
     @State private var showRecovery = false
     @State private var showRecoveryKey = false
     @State private var showMigration = false
-    @State private var resetKind: PasswordResetKind?
+    @State private var showLoginReset = false
     @State private var pane: LauncherPane = .service
 
     private var header: some View {
@@ -310,12 +310,9 @@ struct LauncherView: View {
             }
         }
         if pane == .security && model.passwordSet {
-            GlobalCard("忘记密码", icon: "lock.rotation") {
-                HStack(spacing: 12) {
-                    Button("重设登录密码…") { resetKind = .login }
-                    if model.status?.vaultSet == true { Button("重设保险库口令…") { resetKind = .vault } }
-                }
-                Text("在本机重新设置；重设保险库口令需要恢复 JSON。").font(.caption).foregroundStyle(.secondary)
+            GlobalCard("忘记登录密码", icon: "lock.rotation") {
+                Button("重设登录密码…") { showLoginReset = true }
+                Text("在本机重新设置浏览器登录密码，不影响保险库口令。").font(.caption).foregroundStyle(.secondary)
             }.disabled(model.busy)
         }
         if pane == .security {
@@ -327,17 +324,17 @@ struct LauncherView: View {
             }.disabled(model.busy || model.running)
         }
         if pane == .security {
-            GlobalCard(model.status?.vaultSet == true ? "保险库（已设置）" : "保险库口令（可选）", icon: "lock.shield") {
+            GlobalCard(model.status?.vaultSet == true ? "修改保险库口令（可选）" : "设置保险库口令（可选）", icon: "lock.shield") {
                 if model.status?.vaultSet == true { PasswordField(title: "当前保险库口令", text: $model.currentVaultPassword, error: model.fieldErrors["currentVaultPassword"]).id("currentVaultPassword") }
                 PasswordField(title: model.status?.vaultSet == true ? "新保险库口令" : "保险库口令", text: $model.vaultPassword, placeholder: model.status?.vaultSet == true ? "留空则保留原口令" : "可选，12–1024 字节", error: model.fieldErrors["vaultPassword"]).id("vaultPassword")
                 PasswordField(title: "确认保险库口令", text: $model.repeatedVaultPassword, placeholder: "再次输入保险库口令", error: model.fieldErrors["repeatedVaultPassword"]).id("repeatedVaultPassword")
                 Stepper("闲置 \(model.vaultIdleMinutes) 分钟后锁定", value: $model.vaultIdleMinutes, in: 1...60)
-                Text(model.status?.vaultSet == true ? "历史备份仍需对应的旧口令。修改口令不会撤销旧备份。" : "用于私密照片与个人文件，请独立保存。遗失后无法通过登录密码找回。").font(.caption).foregroundStyle(.secondary)
+                Text(model.status?.vaultSet == true ? "修改需验证当前保险库口令。忘记口令时，请通过独立的“从备份恢复”流程取回资料；只能取回已完成备份的内容。" : "用于日常解锁私密照片与个人文件，请独立设置并保管。").font(.caption).foregroundStyle(.secondary)
             }.disabled(model.busy || model.running)
         }
         if pane == .backup {
             GlobalCard("恢复密钥", icon: "key.horizontal") {
-                Text("忘记备份口令和私密区密码时，用单独保管的恢复文件取回资料。").font(.callout)
+                Text("系统损坏或丢失时，用独立保存的 JSON 解密备份，取回普通与私密资料。仅用于备份恢复，不用于日常设置或修改密码。").font(.callout)
                 Button("设置恢复密钥…") { showRecoveryKey = true }.disabled(!model.saved || model.changed || model.running)
                 Text(model.running ? "请先停止服务，再管理恢复密钥。" : model.changed || !model.saved ? "请先保存当前配置。" : "生成、导出，再重新选择文件验证并创建备份。").font(.caption).foregroundStyle(.secondary)
             }
@@ -509,7 +506,7 @@ struct LauncherView: View {
         .sheet(isPresented: $showRecovery) { RecoveryView(config: model.config) { model.status = nil; model.refresh() } }
         .sheet(isPresented: $showMigration) { MigrationView(model: model) }
         .sheet(isPresented: $showRecoveryKey) { RecoveryKeyView(config: model.config) }
-        .sheet(item: $resetKind) { kind in LocalPasswordResetView(model: model, kind: kind) }
+        .sheet(isPresented: $showLoginReset) { LocalPasswordResetView(model: model) }
     }
 }
 @main struct SRICSLauncherApp: App {

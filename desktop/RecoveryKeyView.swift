@@ -63,7 +63,7 @@ struct RecoveryKeyView: View {
     init(config: LocalConfig) { _model = StateObject(wrappedValue: RecoveryKeyModel(config: config)) }
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            GlobalHeading(title: "恢复密钥", icon: "key.horizontal")
+            GlobalHeading(title: "备份应急恢复密钥", icon: "key.horizontal")
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     GlobalCard("备份目标", icon: "externaldrive") {
@@ -82,7 +82,7 @@ struct RecoveryKeyView: View {
                     }
                     GlobalCard("生成与验证", icon: "key.horizontal") {
                         PasswordField(title: "当前保险库口令", text: $model.password, placeholder: "未启用私密区可留空")
-                        Text("备份口令从已保存配置读取。生成新的备用密钥不会修改日常密码，也不会撤销以前导出的恢复密钥。").font(.caption).foregroundStyle(.secondary)
+                        Text("当前保险库口令仅用于建立私密资料的备份恢复能力，不会存入 JSON。备份口令从已保存配置读取；应急密钥独立随机生成，不修改任何日常密码。").font(.caption).foregroundStyle(.secondary)
                         HStack {
                             Button("1 · 生成并导出…") { model.generate() }
                             Button("2 · 选择恢复文件并验证…") { model.confirm() }.buttonStyle(RecoveryActionStyle())

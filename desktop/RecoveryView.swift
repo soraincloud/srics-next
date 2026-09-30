@@ -241,9 +241,9 @@ struct RecoveryView: View {
                     Text("快照：\(result.snapshot)").font(.system(size: 11, design: .monospaced)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                     Text("校验记录已保存为 .srics-recovery.json。").font(.caption).foregroundStyle(.secondary)
                     if result.vaultPresent { Text(model.source.recoveryKeyFile.isEmpty ? "私密文件保持加密。请使用备份时的保险库口令解锁确认。" : "取回私密文件时会使用所选恢复密钥解锁。").font(.callout) }
-                    if !model.activated { Text("启用会切换资料目录并停止现有服务。忘记登录密码时，请先使用恢复密钥设置新密码。").font(.callout).foregroundStyle(.secondary) }
+                    if !model.activated { Text("启用会切换资料目录并停止现有服务。若不记得备份时的密码，请先配置恢复后的资料库。").font(.callout).foregroundStyle(.secondary) }
                     if !model.activated && !model.source.recoveryKeyFile.isEmpty {
-                        Button(model.passwordsReset ? "重新设置密码…" : "设置新的登录与私密区密码…") { showReset = true }
+                        Button(model.passwordsReset ? "修改恢复副本的配置…" : "配置恢复后的资料库…") { showReset = true }
                         if model.passwordsReset { Text("新密码已保存到恢复副本，可以启用资料库。").font(.caption) }
                     }
                     HStack { Button("在 Finder 中查看") { NSWorkspace.shared.open(URL(fileURLWithPath: result.directory)) }; if !model.activated { Button("取回单项文件…") { showExport = true } } }
