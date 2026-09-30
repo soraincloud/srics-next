@@ -4,6 +4,7 @@ cd "$(dirname "$0")/.."
 ./scripts/build.sh
 export PATH="$PWD/bin/tools:$PATH"
 npm --prefix web test
+if [[ "$(uname -s)" == Darwin ]]; then bash ./scripts/check-passwords.sh; fi
 go vet ./...
 go test -race ./...
 go test -tags integration ./internal/verification ./internal/library ./internal/server ./internal/backup ./cmd/srics -count=1

@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/soraincloud/srics-next/internal/atomicfile"
@@ -417,6 +418,9 @@ func verifyPrivateContents(ctx context.Context, l *library.Library, a *vault.Acc
 
 func resetRecoveryPasswords(ctx context.Context, path string, req recoveryRequest) (recoveryResponse, error) {
 	var out recoveryResponse
+	if strings.ContainsAny(req.NewPassword, "\r\n") || strings.ContainsAny(req.NewVaultPassword, "\r\n") {
+		return out, errors.New("新登录密码和新保险库口令不能包含换行符，请删除后重新设置")
+	}
 	if len(req.NewPassword) < 12 || len(req.NewPassword) > 72 {
 		return out, errors.New("新登录密码需为 12–72 字节")
 	}

@@ -35,6 +35,7 @@ type managerStatus struct {
 	Saved            bool           `json:"saved"`
 	Running          bool           `json:"running"`
 	PasswordSet      bool           `json:"passwordSet"`
+	LoginVerified    bool           `json:"loginVerified"`
 	VaultSet         bool           `json:"vaultSet"`
 	VaultIdleMinutes int            `json:"vaultIdleMinutes"`
 	URL              string         `json:"url"`
@@ -259,11 +260,15 @@ func manager(ctx context.Context, args []string) error {
 	}
 	flags := flag.NewFlagSet("manager", flag.ContinueOnError)
 	flags.StringVar(&path, "config", path, "local configuration file")
+	verifyLogin := flags.Bool("verify-login", false, "verify the password from stdin after start")
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 || !filepath.IsAbs(path) {
 		return errors.New("配置文件需要绝对路径")
+	}
+	if *verifyLogin && args[0] != "start" {
+		return errors.New("--verify-login 仅用于 start")
 	}
 	path = filepath.Clean(path)
 	if args[0] != "info" {
@@ -351,7 +356,19 @@ func manager(ctx context.Context, args []string) error {
 			return e
 		}
 	case "start":
-		if err := startManaged(ctx, path); err != nil {
+		if *verifyLogin {
+			var request struct {
+				Password string `json:"password"`
+			}
+			d := json.NewDecoder(io.LimitReader(os.Stdin, 4096))
+			d.DisallowUnknownFields()
+			if d.Decode(&request) != nil || d.Decode(&struct{}{}) != io.EOF || request.Password == "" || len(request.Password) > 72 {
+				return errors.New("启动登录验证需要有效的登录密码")
+			}
+			if err := startAndVerifyLogin(ctx, path, request.Password); err != nil {
+				return err
+			}
+		} else if err := startManaged(ctx, path); err != nil {
 			return err
 		}
 	case "stop":
@@ -365,5 +382,6 @@ func manager(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	status.LoginVerified = *verifyLogin
 	return json.NewEncoder(os.Stdout).Encode(status)
 }

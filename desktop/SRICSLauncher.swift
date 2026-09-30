@@ -54,6 +54,7 @@ struct ServiceStatus: Codable, Sendable {
     var saved: Bool
     var running: Bool
     var passwordSet: Bool
+    var loginVerified: Bool?
     var vaultSet: Bool
     var vaultIdleMinutes: Int
     var url: String
@@ -75,8 +76,10 @@ struct ConfigureRequest: Encodable, Sendable {
 }
 struct CommandError: LocalizedError, Sendable {
     let message: String
+    var field: String? = nil
     var errorDescription: String? { message }
 }
+struct ManagerFailure: Decodable { let message: String; let field: String }
 
 // Credentials travel over a private stdin pipe, never arguments, logs or preferences.
 func runManager(_ action: String, payload: Data? = nil) throws -> ServiceStatus {
@@ -84,6 +87,7 @@ func runManager(_ action: String, payload: Data? = nil) throws -> ServiceStatus 
     let process = Process()
     process.executableURL = resources.appendingPathComponent("bin/srics")
     process.arguments = ["manager", action]
+    if action == "start", payload != nil { process.arguments?.append("--verify-login") }
     let input = Pipe(), output = Pipe(), failure = Pipe()
     process.standardInput = input
     process.standardOutput = output
@@ -95,7 +99,10 @@ func runManager(_ action: String, payload: Data? = nil) throws -> ServiceStatus 
     let errorBytes = failure.fileHandleForReading.readDataToEndOfFile()
     process.waitUntilExit()
     guard process.terminationStatus == 0 else {
-        throw CommandError(message: String(data: errorBytes, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "操作失败")
+        if let failure = try? JSONDecoder().decode(ManagerFailure.self, from: errorBytes) {
+            throw CommandError(message: failure.message, field: failure.field)
+        }
+        throw CommandError(message: String(data: errorBytes, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "srics: ", with: "") ?? "操作失败")
     }
     return try JSONDecoder().decode(ServiceStatus.self, from: bytes)
 }
@@ -114,10 +121,20 @@ func runManager(_ action: String, payload: Data? = nil) throws -> ServiceStatus 
     @Published var busy = false
     @Published var message = ""
     @Published var failed = false
+    @Published var fieldErrors: [String: String] = [:]
+    @Published var invalidField: String?
+    @Published var validationAttempt = 0
     var running: Bool { status?.running == true }
     var saved: Bool { status?.saved == true }
     var passwordSet: Bool { status?.passwordSet == true }
-    var changed: Bool { config != status?.config || port != String(status?.config.port ?? 19473) || !password.isEmpty || !vaultPassword.isEmpty || vaultIdleMinutes != (status?.vaultIdleMinutes ?? 10) }
+    var passwords: PasswordSettings { PasswordSettings(current: currentPassword, login: password, loginConfirmation: repeatedPassword, currentVault: currentVaultPassword, vault: vaultPassword, vaultConfirmation: repeatedVaultPassword) }
+    var changed: Bool { config != status?.config || port != String(status?.config.port ?? 19473) || passwords.hasDraft || vaultIdleMinutes != (status?.vaultIdleMinutes ?? 10) }
+    func showIssues(_ issues: [PasswordIssue]) {
+        fieldErrors = Dictionary(issues.map { ($0.field, $0.message) }, uniquingKeysWith: { first, _ in first })
+        invalidField = issues.first?.field
+        message = issues.first?.message ?? "请检查填写内容。"
+        failed = true; validationAttempt += 1
+    }
 
     func refresh() {
         guard !busy else { return }
@@ -136,10 +153,12 @@ func runManager(_ action: String, payload: Data? = nil) throws -> ServiceStatus 
     func perform(_ action: String, startAfter: Bool = false) {
         guard !busy else { return }
         var payload: Data?
+        let loginToVerify = action == "configure" ? password : ""
         if action == "configure" {
-            guard vaultPassword == repeatedVaultPassword else { message = "两次保险库口令不一致"; failed = true; return }
-            guard password == repeatedPassword else { message = "两次密码不一致"; failed = true; return }
-            guard let number = Int(port), (1024...65535).contains(number) else { message = "端口需在 1024–65535 之间"; failed = true; return }
+            fieldErrors = [:]
+            let issues = passwords.issues(loginExists: passwordSet, vaultExists: status?.vaultSet == true)
+            guard issues.isEmpty else { showIssues(issues); return }
+            guard let number = Int(port), (1024...65535).contains(number) else { showIssues([.init(field: "port", message: "服务端口需在 1024–65535 之间。")]); return }
             config.port = number
             do { payload = try JSONEncoder().encode(ConfigureRequest(config: config, password: password, currentPassword: currentPassword, vaultPassword: vaultPassword, currentVaultPassword: currentVaultPassword, vaultIdleMinutes: vaultIdleMinutes)) }
             catch { message = "配置无法读取"; failed = true; return }
@@ -154,12 +173,19 @@ func runManager(_ action: String, payload: Data? = nil) throws -> ServiceStatus 
                 var result = try await Task.detached { if let updater { return try updater.run(action, payload: Data(), as: ServiceStatus.self) }; return try runManager(action, payload: request) }.value
                 status = result; config = result.config; port = String(result.config.port)
                 if action == "configure" { password = ""; repeatedPassword = ""; currentPassword = ""; vaultPassword = ""; repeatedVaultPassword = ""; currentVaultPassword = "" }
-                if startAfter { result = try await Task.detached { try runManager("start") }.value; status = result }
+                if startAfter {
+                    let check = loginToVerify.isEmpty ? nil : try JSONEncoder().encode(["password": loginToVerify])
+                    result = try await Task.detached { try runManager("start", payload: check) }.value; status = result
+                    if !loginToVerify.isEmpty && result.loginVerified != true { throw CommandError(message: "服务未确认登录密码验证成功，请刷新状态后重试。") }
+                }
                 message = action == "stop" ? "服务已停止" : result.running ? "服务正在后台运行" : "配置已保存"
+                if startAfter && !loginToVerify.isEmpty { message = "登录密码已保存并通过登录验证，服务正在后台运行。" }
                 if action == "prepare-update" { message = "更新备份已校验，旧程序与记录保存在：\(result.updateBackup)。退出本窗口后替换 .app，再打开并启动。"; NSWorkspace.shared.open(URL(fileURLWithPath: result.updateBackup)) }
                 if result.running && (action == "start" || startAfter), let url = URL(string: result.url) { NSWorkspace.shared.open(url) }
             } catch {
                 message = error.localizedDescription; failed = true
+                if let field = (error as? CommandError)?.field { showIssues([.init(field: field, message: error.localizedDescription)]) }
+                if startAfter { status = try? await Task.detached { try runManager("info") }.value }
                 if action == "prepare-update" { status = try? await Task.detached { try runManager("info") }.value }
             }
             updateProcess = nil; busy = false; if action == "prepare-update" { AppDelegate.recoveryBusy = false }
@@ -253,7 +279,8 @@ struct LauncherView: View {
                         Button("选择…") { model.choose("data") }
                     }.disabled(model.saved)
                 }.accessibilityElement(children: .contain)
-                LabeledContent("端口") { TextField("19473", text: $model.port).frame(width: 95).textFieldStyle(GlobalTextFieldStyle()).labelsHidden() }
+                LabeledContent("端口") { TextField("19473", text: $model.port).frame(width: 95).textFieldStyle(GlobalTextFieldStyle()).labelsHidden() }.id("port")
+                if let error = model.fieldErrors["port"] { Text(error).font(.caption).foregroundStyle(.red) }
                 Picker("访问范围", selection: $model.config.lanAddress) {
                     Text("仅本机").tag("")
                     ForEach(Array(Set((model.status?.lanAddresses ?? []) + (model.config.lanAddress.isEmpty ? [] : [model.config.lanAddress]))).sorted(), id: \.self) { address in
@@ -270,16 +297,17 @@ struct LauncherView: View {
         }
         if pane == .security {
             GlobalCard(model.passwordSet ? "修改登录密码（可选）" : "登录密码", icon: "key") {
-                if model.passwordSet { SecureField("当前密码", text: $model.currentPassword) }
-                SecureField(model.passwordSet ? "新密码，留空则保留" : "至少 12 个字符", text: $model.password)
-                SecureField("再次输入密码", text: $model.repeatedPassword)
+                Text("用于浏览器登录资料库；保险库口令不用于此处登录。").font(.caption).foregroundStyle(.secondary)
+                if model.passwordSet { PasswordField(title: "当前登录密码", text: $model.currentPassword, error: model.fieldErrors["currentPassword"]).id("currentPassword") }
+                PasswordField(title: model.passwordSet ? "新登录密码" : "登录密码", text: $model.password, placeholder: model.passwordSet ? "留空则保留原密码" : "至少 12 个字符，最多 72 字节", error: model.fieldErrors["password"]).id("password")
+                PasswordField(title: "确认登录密码", text: $model.repeatedPassword, placeholder: "再次输入登录密码", error: model.fieldErrors["repeatedPassword"]).id("repeatedPassword")
             }.disabled(model.busy || model.running)
         }
         if pane == .security {
             GlobalCard(model.status?.vaultSet == true ? "保险库（已设置）" : "保险库口令（可选）", icon: "lock.shield") {
-                if model.status?.vaultSet == true { SecureField("当前保险库口令", text: $model.currentVaultPassword) }
-                SecureField(model.status?.vaultSet == true ? "新口令，留空则保留" : "独立口令，至少 12 字节", text: $model.vaultPassword)
-                SecureField("再次输入保险库口令", text: $model.repeatedVaultPassword)
+                if model.status?.vaultSet == true { PasswordField(title: "当前保险库口令", text: $model.currentVaultPassword, error: model.fieldErrors["currentVaultPassword"]).id("currentVaultPassword") }
+                PasswordField(title: model.status?.vaultSet == true ? "新保险库口令" : "保险库口令", text: $model.vaultPassword, placeholder: model.status?.vaultSet == true ? "留空则保留原口令" : "可选，12–1024 字节", error: model.fieldErrors["vaultPassword"]).id("vaultPassword")
+                PasswordField(title: "确认保险库口令", text: $model.repeatedVaultPassword, placeholder: "再次输入保险库口令", error: model.fieldErrors["repeatedVaultPassword"]).id("repeatedVaultPassword")
                 Stepper("闲置 \(model.vaultIdleMinutes) 分钟后锁定", value: $model.vaultIdleMinutes, in: 1...60)
                 Text(model.status?.vaultSet == true ? "历史备份仍需对应的旧口令。修改口令不会撤销旧备份。" : "用于私密照片与个人文件，请独立保存。遗失后无法通过登录密码找回。").font(.caption).foregroundStyle(.secondary)
             }.disabled(model.busy || model.running)
@@ -425,6 +453,7 @@ struct LauncherView: View {
                 sidebar
                 Divider()
                 VStack(spacing: 0) {
+                    ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 22) {
                             HStack {
@@ -438,6 +467,12 @@ struct LauncherView: View {
                             sections
                         }.padding(28)
                     }.id(pane)
+                    .onChange(of: model.validationAttempt) { _ in
+                        guard let field = model.invalidField else { return }
+                        pane = field == "port" ? .service : .security
+                        DispatchQueue.main.async { proxy.scrollTo(field, anchor: .center) }
+                    }
+                    }
                     Divider()
                     footer
                 }

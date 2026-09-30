@@ -380,6 +380,13 @@ button:disabled { opacity: .45; }
 .form-stack > .button { width: 100%; }
 .form-stack input { font-weight: 450; }
 .form-stack > .inline-error { margin-top: 0; }
+.login-password-group { display: grid; gap: 9px; }
+.password-input { position: relative; }
+.password-input input { width: 100%; padding-right: 66px; }
+.password-input input[aria-invalid="true"] { border-color: var(--danger, #b42318); }
+.password-toggle { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); border: 0; border-radius: 6px; padding: 7px 9px; background: transparent; color: var(--secondary); font-size: 12px; cursor: pointer; }
+.password-toggle:hover { background: var(--surface-soft); color: var(--strong); }
+.password-hint { color: var(--muted); font-size: 12px; line-height: 1.7; margin: 0; }
 .auth-layout { min-height: 100dvh; padding: 30px; display: flex; flex-direction: column; align-items: center; }
 .auth-header { display: flex; align-items: center; justify-content: space-between; width: 100%; }
 .auth-card { width: min(100%,460px); margin: auto; padding: 38px; }

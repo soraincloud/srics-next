@@ -13,7 +13,7 @@ struct RecoveryResetView: View {
     @State private var message = ""
     @State private var process: RecoveryProcess?
     private var valid: Bool {
-        (12...72).contains(password.utf8.count) && password == repeated && (!result.vaultPresent || ((12...1024).contains(vaultPassword.utf8.count) && vaultPassword == vaultRepeated))
+        !password.contains("\n") && !password.contains("\r") && !vaultPassword.contains("\n") && !vaultPassword.contains("\r") && (12...72).contains(password.utf8.count) && password.utf8.elementsEqual(repeated.utf8) && (!result.vaultPresent || ((12...1024).contains(vaultPassword.utf8.count) && vaultPassword.utf8.elementsEqual(vaultRepeated.utf8)))
     }
     private func reset() {
         guard valid && !busy else { return }
@@ -33,12 +33,12 @@ struct RecoveryResetView: View {
         VStack(alignment: .leading, spacing: 18) {
             GlobalHeading(title: "设置恢复后的密码", icon: "lock.rotation")
             Text("使用恢复密钥验证身份，只修改已恢复的副本。原资料库和历史备份保持原样。").font(.callout).foregroundStyle(.secondary)
-            SecureField("新登录密码（至少 12 字节）", text: $password)
-            SecureField("再次输入登录密码", text: $repeated)
+            PasswordField(title: "新登录密码", text: $password, placeholder: "12–72 字节，用于浏览器登录", error: password.contains("\n") || password.contains("\r") ? "登录密码不能包含换行符。" : nil)
+            PasswordField(title: "确认登录密码", text: $repeated, error: !repeated.isEmpty && !password.utf8.elementsEqual(repeated.utf8) ? "两次登录密码不一致。" : nil)
             if result.vaultPresent {
                 Divider()
-                SecureField("新私密区密码（至少 12 字节）", text: $vaultPassword)
-                SecureField("再次输入私密区密码", text: $vaultRepeated)
+                PasswordField(title: "新保险库口令", text: $vaultPassword, placeholder: "12–1024 字节，用于解锁私密资料", error: vaultPassword.contains("\n") || vaultPassword.contains("\r") ? "保险库口令不能包含换行符。" : nil)
+                PasswordField(title: "确认保险库口令", text: $vaultRepeated, error: !vaultRepeated.isEmpty && !vaultPassword.utf8.elementsEqual(vaultRepeated.utf8) ? "两次保险库口令不一致。" : nil)
             }
             Text("这不会撤销恢复密钥。云端凭据与日常备份口令仍需在本机配置中重新设置。").font(.caption).foregroundStyle(.secondary)
             if !message.isEmpty { Text(message).font(.callout).textSelection(.enabled) }

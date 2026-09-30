@@ -29,7 +29,12 @@ var version = buildinfo.Current().Version
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "srics:", err)
+		var field *fieldError
+		if errors.As(err, &field) {
+			_ = json.NewEncoder(os.Stderr).Encode(field)
+		} else {
+			fmt.Fprintln(os.Stderr, "srics:", err)
+		}
 		os.Exit(1)
 	}
 }

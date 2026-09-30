@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, onUnmounted, ref } from "vue";
 import App from "./App.vue";
 import Icon from "./Icon.vue";
 import { api, authenticated, csrf, jsonBody, sessionExpired } from "./api";
@@ -10,6 +10,9 @@ const ready = ref(false),
   busy = ref(false),
   password = ref(""),
   error = ref("");
+const showPassword = ref(false);
+const capsLock = ref(false);
+function hidePassword() { showPassword.value = false; }
 async function check() {
   error.value = "";
   try {
@@ -37,13 +40,15 @@ async function submit() {
     sessionExpired.value = false;
     configured.value = true;
     password.value = "";
+    showPassword.value = false;
   } catch (e) {
     error.value = (e as Error).message;
   } finally {
     busy.value = false;
   }
 }
-onMounted(check);
+onMounted(() => { void check(); window.addEventListener("blur", hidePassword); });
+onUnmounted(() => window.removeEventListener("blur", hidePassword));
 </script>
 <template>
   <App v-if="authenticated" />
@@ -71,18 +76,34 @@ onMounted(check);
       </div>
       <p v-if="ready && !configured" class="subtitle">请打开本机的 SRICS Next 程序，设置登录密码并启动服务。</p>
       <form v-if="ready && configured" class="form-stack" @submit.prevent="submit">
-        <label
-          >登录密码<input
+        <div class="login-password-group">
+        <label for="login-password">登录密码</label>
+        <div class="password-input">
+          <input
+            id="login-password"
             v-model="password"
-            type="password"
+            :type="showPassword ? 'text' : 'password'"
             autocomplete="current-password"
+            autocapitalize="none"
+            :spellcheck="false"
+            :aria-invalid="error ? true : undefined"
+            :aria-describedby="error ? 'login-password-hint login-password-error' : 'login-password-hint'"
+            @input="error = ''"
+            @keydown="capsLock = $event.getModifierState('CapsLock')"
+            @keyup="capsLock = $event.getModifierState('CapsLock')"
+            @blur="capsLock = false"
             minlength="1"
             maxlength="72"
             required
             placeholder="请输入密码"
             autofocus
-        /></label>
-        <p v-if="error" class="inline-error" role="alert">{{ error }}</p>
+        />
+        <button type="button" class="password-toggle" :aria-label="showPassword ? '隐藏登录密码' : '显示登录密码'" :aria-pressed="showPassword" @click="showPassword = !showPassword">{{ showPassword ? '隐藏' : '显示' }}</button>
+        </div>
+        <p id="login-password-hint" class="password-hint">使用本机程序中设置的登录密码；保险库口令用于解锁私密资料。</p>
+        <p v-if="capsLock" class="password-hint" role="status">大写锁定已开启</p>
+        <p v-if="error" id="login-password-error" class="inline-error" role="alert">{{ error }}</p>
+        </div>
         <button class="button primary" :disabled="busy">
           <span>{{ busy ? "登录中…" : "登录" }}</span><Icon name="arrow" />
         </button>

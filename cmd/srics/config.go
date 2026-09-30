@@ -220,8 +220,14 @@ func applyConfig(path string, req configureRequest) error {
 	if _, err := configuredCloud(c, ""); err != nil {
 		return err
 	}
+	if strings.ContainsAny(req.Password, "\r\n") {
+		return &fieldError{Field: "password", Message: "登录密码不能包含换行符，请删除后重新设置"}
+	}
+	if strings.ContainsAny(req.VaultPassword, "\r\n") {
+		return &fieldError{Field: "vaultPassword", Message: "保险库口令不能包含换行符，请删除后重新设置"}
+	}
 	if req.Password != "" && (utf8.RuneCountInString(req.Password) < 12 || len(req.Password) > 72) {
-		return errors.New("登录密码至少 12 个字符，最多 72 字节")
+		return &fieldError{Field: "password", Message: "登录密码至少 12 个字符，最多 72 字节"}
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
@@ -230,7 +236,7 @@ func applyConfig(path string, req configureRequest) error {
 	if !exists {
 		if _, err := os.Stat(c.Data); os.IsNotExist(err) {
 			if req.Password == "" {
-				return errors.New("请设置登录密码")
+				return &fieldError{Field: "password", Message: "请设置用于浏览器登录的登录密码"}
 			}
 			// Preserve the old installation marker's missing-volume protection.
 			if c.Data == previous.Data {
@@ -257,10 +263,10 @@ func applyConfig(path string, req configureRequest) error {
 		return err
 	}
 	if len(oldHash) == 0 && req.Password == "" {
-		return errors.New("请设置登录密码")
+		return &fieldError{Field: "password", Message: "请设置用于浏览器登录的登录密码"}
 	}
 	if len(oldHash) > 0 && req.Password != "" && bcrypt.CompareHashAndPassword(oldHash, []byte(req.CurrentPassword)) != nil {
-		return errors.New("当前登录密码不正确，未修改配置")
+		return &fieldError{Field: "currentPassword", Message: "当前登录密码不正确，登录密码与保险库口令均未修改"}
 	}
 	var newHash []byte
 	if req.Password != "" {
@@ -271,8 +277,14 @@ func applyConfig(path string, req configureRequest) error {
 	}
 	var wrapped []byte
 	if req.VaultPassword != "" {
+		if len(req.VaultPassword) < 12 || len(req.VaultPassword) > 1024 {
+			return &fieldError{Field: "vaultPassword", Message: "保险库口令需为 12–1024 字节"}
+		}
 		wrapped, err = l.PrepareVault(req.VaultPassword, req.CurrentVaultPassword)
 		if err != nil {
+			if err.Error() == "当前保险库口令不正确" {
+				return &fieldError{Field: "currentVaultPassword", Message: "当前保险库口令不正确，登录密码与保险库口令均未修改"}
+			}
 			return err
 		}
 	}

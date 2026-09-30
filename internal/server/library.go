@@ -177,7 +177,7 @@ func (a *LibraryAPI) auth(w http.ResponseWriter, r *http.Request) bool {
 			if a.failures >= 5 {
 				a.nextLogin = time.Now().Add(time.Duration(min(a.failures, 60)) * time.Second)
 			}
-			apiError(w, 401, errors.New("密码不正确"))
+			apiError(w, 401, errors.New("登录密码不正确，请使用本机程序中设置的登录密码（不是保险库口令）"))
 			return false
 		}
 		a.failures = 0

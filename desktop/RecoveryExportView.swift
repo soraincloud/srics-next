@@ -55,7 +55,7 @@ struct RecoveryExportView: View {
         VStack(alignment: .leading, spacing: 16) {
             GlobalHeading(title: "取回单项文件", icon: "square.and.arrow.up")
             Text("从已校验的恢复副本取回文件，当前资料库保持不变。").foregroundStyle(.secondary)
-            if hasVault && model.source.recoveryKeyFile.isEmpty { HStack { SecureField("备份时的保险库口令（读取私密文件）", text: $model.password); Button("读取私密目录") { model.load() } }.disabled(model.busy) }
+            if hasVault && model.source.recoveryKeyFile.isEmpty { HStack { PasswordField(title: "备份时的保险库口令", text: $model.password, placeholder: "用于读取私密文件"); Button("读取私密目录") { model.load() } }.disabled(model.busy) }
             if hasVault && !model.source.recoveryKeyFile.isEmpty { Text("使用恢复密钥解锁私密文件。").font(.caption).foregroundStyle(.secondary) }
             TextField("按名称筛选", text: $model.filter).textFieldStyle(GlobalTextFieldStyle())
             List(model.filtered, selection: $model.selected) { item in HStack { Text(item.name); Spacer(); Text(item.category).foregroundStyle(.secondary) }.tag(item.id) }.disabled(model.busy)

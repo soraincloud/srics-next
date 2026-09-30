@@ -25,13 +25,16 @@ with tempfile.TemporaryDirectory(prefix='srics-launcher-test-') as temporary:
     request = dict(config=config, password='synthetic-launcher-test-password', currentPassword='')
     env = dict(os.environ, PATH='/usr/bin:/bin:/usr/sbin:/sbin')
     def manager(action, body=None, success=True):
-        result = subprocess.run([str(binary), 'manager', action, '--config', str(config_path)], input=json.dumps(body) if body else '', text=True, capture_output=True, env=env, timeout=35)
+        args = [str(binary), 'manager', action, '--config', str(config_path)]
+        if action == 'start' and body is not None:
+            args.append('--verify-login')
+        result = subprocess.run(args, input=json.dumps(body) if body else '', text=True, capture_output=True, env=env, timeout=35)
         if success:
             assert result.returncode == 0, result.stderr
             return json.loads(result.stdout)
         assert result.returncode != 0, f'{action} unexpectedly succeeded'
     jar = http.cookiejar.CookieJar()
-    client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+    client = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPCookieProcessor(jar))
     def api(path, body=None):
         payload = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(f'http://127.0.0.1:{port}'+path, data=payload, headers={'X-SRICS-Request':'app','Content-Type':'application/json'})
@@ -40,10 +43,13 @@ with tempfile.TemporaryDirectory(prefix='srics-launcher-test-') as temporary:
     try:
         manager('start', success=False)
         assert manager('configure', request)['passwordSet']
+        manager('start', {'password': 'incorrect-synthetic-password'}, success=False)
+        assert not manager('info')['running'], 'failed login verification left the service running'
         with socket.socket() as blocker:
             blocker.bind(('127.0.0.1', port)); blocker.listen()
             manager('start', success=False)
-        assert manager('start')['running']
+        verified = manager('start', {'password': request['password']})
+        assert verified['running'] and verified['loginVerified'], 'first configured password was not verified'
         assert manager('start')['running'], 'repeated start failed'
         assert manager('info')['running'], 'service did not outlive start command'
         target = f'gui/{os.getuid()}/com.soraincloud.srics.' + hashlib.sha256(str(config_path).encode()).hexdigest()
@@ -56,7 +62,8 @@ with tempfile.TemporaryDirectory(prefix='srics-launcher-test-') as temporary:
         os.kill(original_pid, signal.SIGKILL)
         deadline = time.monotonic() + 45
         while time.monotonic() < deadline:
-            if pid() not in (None, original_pid) and manager('info')['running']:
+            state = manager('info')
+            if pid() not in (None, original_pid) and state['running'] and state['passwordSet']:
                 break
             time.sleep(1)
         else:
@@ -78,6 +85,19 @@ with tempfile.TemporaryDirectory(prefix='srics-launcher-test-') as temporary:
         assert not manager('stop')['running']
         assert request['password'] not in config_path.read_text()
         assert request['password'] not in (root / 'service.log').read_text()
+        old_password = request['password']
+        request.update(currentPassword=old_password, password=' 测试-cafe\u0301-"password"-🔑 ')
+        assert manager('configure', request)['passwordSet']
+        assert manager('start', {'password': request['password']})['loginVerified']
+        assert api('/api/auth/login', {'password': request['password']})['authenticated']
+        try:
+            api('/api/auth/login', {'password': old_password})
+            raise AssertionError('old password remained valid after a saved change')
+        except urllib.error.HTTPError as error:
+            assert error.code == 401
+        assert not manager('stop')['running']
+        assert request['password'] not in config_path.read_text()
+        assert request['password'] not in (root / 'service.log').read_text()
         backup_password = root / 'backup-password.txt'
         backup_password.write_text('synthetic-update-password'); backup_password.chmod(0o600)
         config.update(backupRepository=str(root / 'backup'), backupPasswordFile=str(backup_password))
@@ -92,6 +112,6 @@ with tempfile.TemporaryDirectory(prefix='srics-launcher-test-') as temporary:
         assert len(record['snapshot']) == 64 and pathlib.Path(record['previousApp']).is_dir()
         assert (update_dir / 'config.json').stat().st_mode & 0o777 == 0o600
         assert manager('start')['running'], 'could not restart after update preparation'
-        print('PASS: crash restart, update backup + retained app + restart, local setup, port conflict, background lifetime, duplicate start/stop, web setup removal, login, configuration lock, session invalidation')
+        print('PASS: first setup + verified login, verification failure stops service, Unicode password change + old password rejected, crash restart, update backup + retained app + restart, port conflict, background lifetime, duplicate start/stop, web setup removal, configuration lock, session invalidation')
     finally:
         manager('stop')

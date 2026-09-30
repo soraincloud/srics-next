@@ -81,7 +81,7 @@ struct RecoveryKeyView: View {
                         }
                     }
                     GlobalCard("生成与验证", icon: "key.horizontal") {
-                        SecureField("当前私密区密码（未启用可留空）", text: $model.password)
+                        PasswordField(title: "当前保险库口令", text: $model.password, placeholder: "未启用私密区可留空")
                         Text("备份口令从已保存配置读取。生成新的备用密钥不会修改日常密码，也不会撤销以前导出的恢复密钥。").font(.caption).foregroundStyle(.secondary)
                         HStack {
                             Button("1 · 生成并导出…") { model.generate() }
