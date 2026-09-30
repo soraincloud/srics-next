@@ -18,6 +18,7 @@ binary = pathlib.Path(sys.argv[1]).resolve()
 with tempfile.TemporaryDirectory(prefix='srics-launcher-test-') as temporary:
     root = pathlib.Path(temporary)
     config_path = root / 'config.json'
+    migration_root = tempfile.TemporaryDirectory(prefix='srics-migration-target-')
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))
         port = sock.getsockname()[1]
@@ -117,6 +118,19 @@ with tempfile.TemporaryDirectory(prefix='srics-launcher-test-') as temporary:
         assert not manager('stop')['running']
         assert request['password'] not in config_path.read_text()
         assert request['password'] not in (root / 'service.log').read_text()
+        assert manager('start')['running']
+        assert api('/api/auth/login', {'password': request['password']})['authenticated']
+        original_data = pathlib.Path(config['data'])
+        destination = pathlib.Path(migration_root.name) / 'library'
+        migrated = manager('migrate-library', {'directory': str(destination)})
+        assert not migrated['running'], 'migration did not stop the service'
+        assert pathlib.Path(migrated['config']['data']).resolve() == destination.resolve()
+        assert (original_data / 'index.db').is_file(), 'migration removed original data'
+        config['data'] = migrated['config']['data']
+        assert manager('start', {'password': request['password']})['loginVerified']
+        assert not api('/api/auth')['authenticated'], 'old session survived migration'
+        assert api('/api/auth/login', {'password': request['password']})['authenticated']
+        assert not manager('stop')['running']
         backup_password = root / 'backup-password.txt'
         backup_password.write_text('synthetic-update-password'); backup_password.chmod(0o600)
         config.update(backupRepository=str(root / 'backup'), backupPasswordFile=str(backup_password))
@@ -131,6 +145,9 @@ with tempfile.TemporaryDirectory(prefix='srics-launcher-test-') as temporary:
         assert len(record['snapshot']) == 64 and pathlib.Path(record['previousApp']).is_dir()
         assert (update_dir / 'config.json').stat().st_mode & 0o777 == 0o600
         assert manager('start')['running'], 'could not restart after update preparation'
-        print('PASS: first setup + verified login, verification failure stops service, Unicode password change + old password rejected, local reset + no HTTP reset + session invalidation, crash restart, update backup + retained app + restart, port conflict, background lifetime, duplicate start/stop, web setup removal, configuration lock, session invalidation')
+        print('PASS: first setup + verified login, verification failure stops service, Unicode password change + old password rejected, local reset + no HTTP reset + session invalidation, migration + retained source + new path login, crash restart, update backup + retained app + restart, port conflict, background lifetime, duplicate start/stop, web setup removal, configuration lock, session invalidation')
     finally:
-        manager('stop')
+        try:
+            manager('stop')
+        finally:
+            migration_root.cleanup()

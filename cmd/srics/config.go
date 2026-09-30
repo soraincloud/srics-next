@@ -212,7 +212,7 @@ func applyConfig(path string, req configureRequest) error {
 		return err
 	}
 	if exists && previous.Data != c.Data {
-		return errors.New("资料目录已固定；迁移或恢复需单独操作，配置不会移动或覆盖资料")
+		return errors.New("请使用“迁移资料目录”或“从备份恢复”调整位置，普通配置不会移动或覆盖资料")
 	}
 	if _, err := configuredBackup(c, ""); err != nil {
 		return err

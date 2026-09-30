@@ -226,6 +226,7 @@ struct LauncherView: View {
     @StateObject private var model = Launcher()
     @State private var showRecovery = false
     @State private var showRecoveryKey = false
+    @State private var showMigration = false
     @State private var resetKind: PasswordResetKind?
     @State private var pane: LauncherPane = .service
 
@@ -293,8 +294,20 @@ struct LauncherView: View {
                 }
                 Toggle("登录电脑后自动启动", isOn: $model.config.autoStart)
                 Toggle("异常退出后自动重启", isOn: $model.config.autoRestart)
-                if model.saved { Text("资料目录已固定，迁移与恢复需单独操作。").font(.caption).foregroundStyle(.secondary) }
+                if model.saved { Text("更换资料位置，请使用下方的“迁移资料目录”。").font(.caption).foregroundStyle(.secondary) }
             }.disabled(model.busy || model.running)
+        }
+        if pane == .service {
+            GlobalCard("迁移与换设备", icon: "externaldrive.badge.timemachine") {
+                if model.saved {
+                    Button("迁移资料目录…") { showMigration = true }.disabled(model.busy || model.changed)
+                    Text(model.changed ? "请先保存当前更改，再迁移资料目录。" : "将完整资料库复制到新位置，校验后切换。原目录保留。").font(.caption).foregroundStyle(.secondary)
+                    Divider()
+                }
+                Text("换到新 Mac：旧机停止写入后完成最终备份。在新机安装 App，用备份仓库与恢复 JSON 恢复；直接连接云端时，还需云端访问凭据。").font(.callout)
+                Button("从备份迁入这台 Mac…") { showRecovery = true }.disabled(model.busy || (model.saved && model.changed))
+                Text("资料和密码随备份恢复。新机需重新设置备份路径、云端凭据和局域网 HTTPS；确认可用前保留旧机资料。").font(.caption).foregroundStyle(.secondary)
+            }
         }
         if pane == .security && model.passwordSet {
             GlobalCard("忘记密码", icon: "lock.rotation") {
@@ -494,6 +507,7 @@ struct LauncherView: View {
         .textFieldStyle(GlobalTextFieldStyle()).toggleStyle(.switch)
         .task { model.refresh() }
         .sheet(isPresented: $showRecovery) { RecoveryView(config: model.config) { model.status = nil; model.refresh() } }
+        .sheet(isPresented: $showMigration) { MigrationView(model: model) }
         .sheet(isPresented: $showRecoveryKey) { RecoveryKeyView(config: model.config) }
         .sheet(item: $resetKind) { kind in LocalPasswordResetView(model: model, kind: kind) }
     }

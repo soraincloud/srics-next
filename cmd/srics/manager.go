@@ -252,7 +252,7 @@ func stopManaged(ctx context.Context, path string) error {
 }
 func manager(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: srics manager [info|configure|start|stop|cloud-check|recovery-snapshots|recovery-restore|recovery-inspect|recovery-activate|recovery-items|recovery-export|prepare-update] [--config path]")
+		return errors.New("usage: srics manager [info|configure|start|stop|migrate-library|reset-passwords|cloud-check|recovery-snapshots|recovery-restore|recovery-inspect|recovery-activate|recovery-items|recovery-export|prepare-update] [--config path]")
 	}
 	path, err := configPath()
 	if err != nil {
@@ -323,6 +323,10 @@ func manager(ctx context.Context, args []string) error {
 		}
 		status.CloudCheck = message
 		return json.NewEncoder(os.Stdout).Encode(status)
+	case "migrate-library":
+		if err := migrationManager(ctx, path, os.Stdin); err != nil {
+			return err
+		}
 	case "reset-passwords":
 		if err := resetLocalPasswordsManager(ctx, path, os.Stdin); err != nil {
 			return err

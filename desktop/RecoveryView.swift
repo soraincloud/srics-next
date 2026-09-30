@@ -95,7 +95,7 @@ final class RecoveryProcess: @unchecked Sendable {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard Self.recoveryBusy else { return .terminateNow }
         let alert = NSAlert()
-        alert.messageText = "备份或恢复任务正在进行"
+        alert.messageText = "备份、恢复或迁移任务正在进行"
         alert.informativeText = "请等待完成，或取消当前任务后退出。"
         alert.addButton(withTitle: "继续等待")
         alert.runModal()
