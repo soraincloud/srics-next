@@ -21,8 +21,8 @@ defineProps<{ icon: string; title: string; description?: string; compact?: boole
   min-height: 300px;
   padding: 48px 24px;
   text-align: center;
-  border: 1px solid var(--line);
-  border-radius: 20px;
+  border: 2px solid var(--line);
+  border-radius: 24px;
   background: var(--surface);
 }
 .empty-state-icon {
@@ -44,7 +44,7 @@ defineProps<{ icon: string; title: string; description?: string; compact?: boole
 .empty-state-compact .empty-state-icon { width: 40px; height: 40px; margin-bottom: 12px; border-radius: 12px; }
 .empty-state-compact h2 { font-size: 14px; }
 @media (max-width: 720px) {
-  .empty-state { min-height: 260px; padding: 36px 20px; border-radius: 16px; }
+  .empty-state { min-height: 260px; padding: 36px 20px; border-radius: 20px; }
   .empty-state-compact { min-height: 180px; padding: 24px 12px; }
 }
 </style>

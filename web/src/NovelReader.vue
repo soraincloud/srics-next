@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import Icon from "./Icon.vue";
+import SegmentedControl from "./SegmentedControl.vue";
 import EmptyState from "./EmptyState.vue";
 import ActionConfirm from "./ActionConfirm.vue";
 const confirmation = ref<InstanceType<typeof ActionConfirm>>();
@@ -524,13 +525,13 @@ onUnmounted(() => {
           新增章节
         </button>
       </div>
-      <div class="segmented chapter-tabs">
+      <SegmentedControl class="chapter-tabs" aria-label="章节范围">
         <button :aria-pressed="!deleted" @click="deleted = false">
           目录 {{ novel.chapters.length }}</button
         ><button :aria-pressed="deleted" @click="deleted = true">
           已删除 {{ novel.trash.length }}
         </button>
-      </div>
+      </SegmentedControl>
       <ol class="chapter-list" aria-label="章节目录">
         <li
           v-for="(c, i) in deleted ? novel.trash : novel.chapters"
@@ -596,7 +597,7 @@ onUnmounted(() => {
     >
       <template v-if="chapter">
         <div class="novel-toolbar">
-          <div class="segmented">
+          <SegmentedControl aria-label="阅读模式">
             <button
               :aria-pressed="!editing"
               :disabled="blocked"
@@ -610,7 +611,7 @@ onUnmounted(() => {
             >
               编辑
             </button>
-          </div>
+          </SegmentedControl>
           <template v-if="editing"
             ><span class="save-status" role="status">{{ saveStatus }}</span
             ><button

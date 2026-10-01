@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from "vue";
 import Icon from "./Icon.vue";
+import SegmentedControl from "./SegmentedControl.vue";
 import EmptyState from "./EmptyState.vue";
 import ActionConfirm from "./ActionConfirm.vue";
 const confirmation = ref<InstanceType<typeof ActionConfirm>>(),
@@ -205,14 +206,14 @@ onUnmounted(() => {
     </div>
   </section>
   <div v-if="page !== 'trash'" class="collection-toolbar">
-    <div class="segmented" role="group" aria-label="备份目标">
+    <SegmentedControl role="group" aria-label="备份目标">
       <button :aria-pressed="target === 'local'" @click="target = 'local'">
         本地 / 独立硬盘
       </button>
       <button :aria-pressed="target === 'cloud'" @click="target = 'cloud'">
         云端
       </button>
-    </div>
+    </SegmentedControl>
   </div>
   <p v-if="error" class="notice warning" role="alert">{{ error }}</p>
   <template v-if="page === 'trash'">

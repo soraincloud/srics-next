@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import Icon from "./Icon.vue";
+import SegmentedControl from "./SegmentedControl.vue";
 import EmptyState from "./EmptyState.vue";
 import { useGalleryNavigation } from "./gallery";
 import UploadPanel from "./UploadPanel.vue";
@@ -336,7 +337,7 @@ onUnmounted(() => {
           @input="search"
         />
       </div>
-      <div v-else-if="module === 'images'" class="segmented">
+      <SegmentedControl v-else-if="module === 'images'" aria-label="图片浏览方式">
         <button
           :aria-pressed="!random"
           @click="
@@ -354,7 +355,7 @@ onUnmounted(() => {
         >
           <Icon name="shuffle" />随机浏览
         </button>
-      </div>
+      </SegmentedControl>
       <p v-else class="subtle-copy">保留照片原件与元数据</p>
       <button v-if="random" class="button secondary small" @click="load()">
         <Icon name="refresh" />换一批

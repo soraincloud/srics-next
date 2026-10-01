@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch, nextTick } from "vue";
 import Icon from "./Icon.vue";
+import SegmentedControl from "./SegmentedControl.vue";
 import EmptyState from "./EmptyState.vue";
 import { useGalleryNavigation } from "./gallery";
 import PrivateImage from "./PrivateImage.vue";
@@ -292,9 +293,9 @@ onUnmounted(() => {
   </section>
   <template v-else>
     <div class="private-toolbar">
-      <div class="view-switch">
+      <SegmentedControl role="group" aria-label="浏览方式">
         <button
-          :class="{ active: !trash && !random }"
+          :aria-pressed="!trash && !random"
           @click="
             trash = false;
             random = false;
@@ -303,17 +304,17 @@ onUnmounted(() => {
           列表</button
         ><button
           v-if="isPhoto"
-          :class="{ active: random && !trash }"
+          :aria-pressed="random && !trash"
           @click="
             trash = false;
             random = true;
           "
         >
           随机浏览</button
-        ><button :class="{ active: trash }" @click="trash = true">
+        ><button :aria-pressed="trash" @click="trash = true">
           回收站
         </button>
-      </div>
+      </SegmentedControl>
       <div class="private-toolbar-actions">
         <button
           v-if="isPhoto && !trash && items.length"
@@ -339,7 +340,7 @@ onUnmounted(() => {
         </button>
       </div>
     </div>
-    <div v-if="!isPhoto" class="private-search">
+    <div v-if="!isPhoto" class="search-field private-search">
       <Icon name="search" /><input
         v-model="query"
         type="search"
