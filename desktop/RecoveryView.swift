@@ -84,7 +84,14 @@ final class RecoveryProcess: @unchecked Sendable {
         let errors = failure.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
         lock.lock(); let wasCancelled = cancelled; lock.unlock()
-        if wasCancelled { throw CommandError(message: "任务已取消。已生成的目录会保留，重试请选择新目录。") }
+        if wasCancelled {
+            let message: String
+            if action.hasPrefix("backup-setup") { message = "任务已取消。已保存的配置、本机钥匙与备份会保留，可重新打开向导检查并继续。" }
+            else if action == "recovery-key-confirm" { message = "验证已取消。请使用同一份恢复 JSON 重试验证，无需重新生成。" }
+            else if action == "recovery-key-generate" { message = "任务已取消。如果已经导出 JSON，请重新选择该文件验证；尚未导出则重试生成。" }
+            else { message = "任务已取消。已生成的目录会保留，重试请选择新目录。" }
+            throw CommandError(message: message)
+        }
         guard p.terminationStatus == 0 else { throw CommandError(message: String(data: errors, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "恢复操作失败") }
         return try JSONDecoder().decode(type, from: data)
     }

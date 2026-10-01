@@ -226,6 +226,7 @@ struct LauncherView: View {
     @StateObject private var model = Launcher()
     @State private var showRecovery = false
     @State private var showRecoveryKey = false
+    @State private var backupSetupTarget: BackupSetupTarget?
     @State private var showMigration = false
     @State private var showLoginReset = false
     @State private var pane: LauncherPane = .service
@@ -333,56 +334,37 @@ struct LauncherView: View {
             }.disabled(model.busy || model.running)
         }
         if pane == .backup {
-            GlobalCard("恢复密钥", icon: "key.horizontal") {
-                Text("系统损坏或丢失时，用独立保存的 JSON 解密备份，取回普通与私密资料。仅用于备份恢复，不用于日常设置或修改密码。").font(.callout)
-                Button("设置恢复密钥…") { showRecoveryKey = true }.disabled(!model.saved || model.changed || model.running)
-                Text(model.running ? "请先停止服务，再管理恢复密钥。" : model.changed || !model.saved ? "请先保存当前配置。" : "生成、导出，再重新选择文件验证并创建备份。").font(.caption).foregroundStyle(.secondary)
-            }
-            GlobalCard("本地 / 独立硬盘备份（可选）", icon: "externaldrive.badge.timemachine") {
-                LabeledContent("备份目录") {
-                    HStack { TextField("未配置", text: $model.config.backupRepository).textFieldStyle(GlobalTextFieldStyle()).labelsHidden().accessibilityLabel("备份目录路径")
-                        Button("选择…") { model.choose("backup") }
-                    }
-                }.accessibilityElement(children: .contain)
-                LabeledContent("口令文件") {
-                    HStack { TextField("未配置", text: $model.config.backupPasswordFile).textFieldStyle(GlobalTextFieldStyle()).labelsHidden().accessibilityLabel("备份口令文件路径")
-                        Button("选择…") { model.choose("passwordFile") }
-                    }
-                }.accessibilityElement(children: .contain)
-                Text("使用独立备份口令，文件权限需为 600。请另存一份恢复口令。").font(.caption).foregroundStyle(.secondary)
-            }.disabled(model.busy || model.running)
-        }
-        if pane == .backup {
-            GlobalCard("云端加密备份（S3 兼容）", icon: "cloud") {
-                Toggle("启用云端备份", isOn: $model.config.cloud.enabled)
-                if model.config.cloud.enabled {
-                    TextField("Endpoint，例如 https://s3.example.com", text: $model.config.cloud.connection.endpoint)
-                    TextField("区域，例如 us-east-1", text: $model.config.cloud.connection.region)
-                    TextField("存储桶", text: $model.config.cloud.connection.bucket)
-                    TextField("专用前缀，例如 srics/main", text: $model.config.cloud.connection.prefix)
-                    Picker("寻址方式", selection: $model.config.cloud.connection.lookup) {
-                        Text("自动").tag("auto")
-                        Text("Path").tag("path")
-                        Text("DNS（OSS）").tag("dns")
-                    }
-                    LabeledContent("凭据文件") {
-                        HStack { TextField("JSON · 权限 600", text: $model.config.cloud.credentialsFile).textFieldStyle(GlobalTextFieldStyle()).labelsHidden().accessibilityLabel("凭据文件路径"); Button("选择…") { model.choose("cloudCredentials") } }
-                    }.accessibilityElement(children: .contain)
-                    LabeledContent("备份口令文件") {
-                        HStack { TextField("权限 600", text: $model.config.cloud.passwordFile).textFieldStyle(GlobalTextFieldStyle()).labelsHidden().accessibilityLabel("备份口令文件路径"); Button("选择…") { model.choose("cloudPassword") } }
-                    }.accessibilityElement(children: .contain)
-                    LabeledContent("自定义 CA") {
-                        HStack { TextField("可选 PEM 文件", text: $model.config.cloud.connection.caFile).textFieldStyle(GlobalTextFieldStyle()).labelsHidden().accessibilityLabel("自定义 CA路径"); Button("选择…") { model.choose("cloudCA") } }
-                    }.accessibilityElement(children: .contain)
-                    Text("凭据 JSON 包含 accessKeyId、secretAccessKey，可选 sessionToken。存放在资料库和本地备份目录之外。").font(.caption).foregroundStyle(.secondary)
-                    Button("检查云端连接") { model.checkCloud() }
-                    Text("先创建存储桶，使用专用前缀。每次备份会读取全部云端备份进行检查，可能产生下载费用。").font(.caption).foregroundStyle(.secondary)
+            GlobalCard("设置备份", icon: "externaldrive.badge.timemachine") {
+                Text("选择位置 → 创建并校验备份 → 保存应急恢复 JSON。")
+                Text("新备份的加密钥匙由程序自动生成并保存在本机，你不需要另设密码或准备口令文件。").font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Button(model.config.cloud.enabled ? "管理云端备份…" : "设置云端备份…") { backupSetupTarget = .cloud }
+                    Button(model.config.backupRepository.isEmpty ? "设置独立硬盘备份…" : "管理独立硬盘备份…") { backupSetupTarget = .local }
+                }.disabled(!model.saved || model.changed || model.running || model.busy)
+                if model.running { Text("请先停止服务，再设置备份。").font(.caption).foregroundStyle(.secondary) }
+                else if !model.saved || model.changed { Text("请先保存当前资料库配置。").font(.caption).foregroundStyle(.secondary) }
+                if !model.config.cloud.passwordFile.isEmpty {
+                    Toggle("启用云端备份", isOn: Binding(get: { model.config.cloud.enabled }, set: { enabled in
+                        model.config.cloud.enabled = enabled
+                        if !enabled && model.config.backupRepository.isEmpty { model.config.backupDailyAt = "" }
+                    })).disabled(model.running || model.busy)
+                    LabeledContent("云端", value: "\(model.config.cloud.connection.bucket) / \(model.config.cloud.connection.prefix)")
                 }
-            }.disabled(model.busy || model.running)
+                if !model.config.backupRepository.isEmpty {
+                    LabeledContent("独立硬盘", value: model.config.backupRepository)
+                }
+            }
+            GlobalCard("应急恢复 JSON", icon: "key.horizontal") {
+                Text("机器与密码全部丢失时，用完整备份和匹配的 JSON 取回普通与私密资料。请将 JSON 另存到这台 Mac 以外。")
+                Button("查看或继续设置恢复钥匙…") { showRecoveryKey = true }.disabled(!model.saved || model.changed || model.running || model.busy)
+                Text("它只用于灾难恢复，不用于日常登录或修改保险库口令。").font(.caption).foregroundStyle(.secondary)
+            }
         }
         if pane == .backup {
             GlobalCard("备份计划", icon: "clock") {
                 Toggle("每天自动备份", isOn: Binding(get: { !model.config.backupDailyAt.isEmpty }, set: { model.config.backupDailyAt = $0 ? "03:00" : "" }))
+                    .disabled(model.config.backupRepository.isEmpty && !model.config.cloud.enabled)
+                if model.config.backupRepository.isEmpty && !model.config.cloud.enabled { Text("先完成上方的备份设置向导，再开启自动备份。").font(.caption).foregroundStyle(.secondary) }
                 if !model.config.backupDailyAt.isEmpty {
                     LabeledContent("每天执行时间") {
                         TextField("03:00", text: $model.config.backupDailyAt).frame(width: 95).textFieldStyle(GlobalTextFieldStyle()).labelsHidden()
@@ -505,7 +487,8 @@ struct LauncherView: View {
         .task { model.refresh() }
         .sheet(isPresented: $showRecovery) { RecoveryView(config: model.config) { model.status = nil; model.refresh() } }
         .sheet(isPresented: $showMigration) { MigrationView(model: model) }
-        .sheet(isPresented: $showRecoveryKey) { RecoveryKeyView(config: model.config) }
+        .sheet(isPresented: $showRecoveryKey) { RecoveryKeyView(config: model.config, vaultConfigured: model.status?.vaultSet == true) }
+        .sheet(item: $backupSetupTarget) { target in BackupSetupView(config: model.config, target: target.rawValue, vaultConfigured: model.status?.vaultSet == true) { model.status = nil; model.refresh() } }
         .sheet(isPresented: $showLoginReset) { LocalPasswordResetView(model: model) }
     }
 }
