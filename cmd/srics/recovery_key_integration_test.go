@@ -315,22 +315,66 @@ func TestRecoveryKeySurvivesLossOfLibraryConfigAndPasswords(t *testing.T) {
 	if _, err = client.RepositoryID(ctx); err != nil {
 		t.Fatal("normal password stopped working")
 	}
+	// The only surviving backup is now the portable package, not a directory.
+	packagePath := filepath.Join(base, "surviving.sricsbackup")
+	packed, err := exportBackupPackage(ctx, configPath, binary, c, l, backupPackageRequest{File: packagePath, RecoveryKeyFile: req.File})
+	if err != nil {
+		t.Fatal("package export", err)
+	}
+	if _, err = exportBackupPackage(ctx, configPath, binary, c, l, backupPackageRequest{File: packagePath, RecoveryKeyFile: req.File}); err == nil {
+		t.Fatal("existing package replaced")
+	}
+	unsafePackage := filepath.Join(c.Data, "unsafe.sricsbackup")
+	if _, err = exportBackupPackage(ctx, configPath, binary, c, l, backupPackageRequest{File: unsafePackage, RecoveryKeyFile: req.File}); err == nil {
+		t.Fatal("export into library accepted")
+	}
+	foreignPackageKey := *key
+	foreignPackageKey.RepositoryID = strings.Repeat("b", 64)
+	foreignPackageFile := filepath.Join(base, "wrong-package-key.json")
+	foreignPackageBytes, _ := json.Marshal(foreignPackageKey)
+	if err = os.WriteFile(foreignPackageFile, foreignPackageBytes, 0600); err != nil {
+		t.Fatal(err)
+	}
+	wrongPackageDest := filepath.Join(base, "wrong-package-import")
+	if _, err = openRecoveryPackage(ctx, configPath, binary, recoveryRequest{Source: recoverySource{Target: "package", PackageFile: packagePath, RecoveryKeyFile: foreignPackageFile}, Directory: wrongPackageDest}); err == nil {
+		t.Fatal("wrong package key accepted")
+	}
+	if _, err = os.Stat(wrongPackageDest); !os.IsNotExist(err) {
+		t.Fatal("wrong key allocated output")
+	}
+	futureID = packed.Snapshot
+	archive, err := zip.OpenReader(packagePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range archive.File {
+		if entry.Method != zip.Store {
+			t.Fatal("package recompressed ciphertext")
+		}
+		r, e := entry.Open()
+		if e != nil {
+			t.Fatal(e)
+		}
+		b, e := io.ReadAll(r)
+		r.Close()
+		if e != nil {
+			t.Fatal(e)
+		}
+		if bytes.Contains(b, []byte(key.Secret)) || bytes.Contains(b, plain) || bytes.Contains(b, []byte("整机丢失后仍可取回的正文")) || bytes.Contains(b, []byte("synthetic-original-backup-password")) {
+			t.Fatal("package contains plaintext or recovery secret")
+		}
+	}
+	archive.Close()
 	if err = l.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if err = os.RemoveAll(machine); err != nil {
 		t.Fatal(err)
 	}
-	// A restored/copied repository is independent of its previous filesystem path.
-	moved := filepath.Join(base, "surviving-copy")
-	if err = os.Rename(c.BackupRepository, moved); err != nil {
+	if err = os.RemoveAll(c.BackupRepository); err != nil {
 		t.Fatal(err)
 	}
-	source.Repository = moved
-	keyClient, err = source.client(ctx, binary)
-	if err != nil {
-		t.Fatal(err)
-	}
+	source = recoverySource{Target: "package", PackageFile: packagePath, RecoveryKeyFile: req.File}
 	client = backup.Client{}
 	req.VaultPassword = ""
 	wrapped = nil
@@ -340,6 +384,11 @@ func TestRecoveryKeySurvivesLossOfLibraryConfigAndPasswords(t *testing.T) {
 	if err = os.Mkdir(filepath.Dir(newConfigPath), 0700); err != nil {
 		t.Fatal(err)
 	}
+	opened := recoveryCLI(t, ctx, binary, newConfigPath, "recovery-package-open", recoveryRequest{Source: source, Directory: filepath.Join(base, "imported-package")})
+	if opened.Repository == "" || len(opened.Snapshots) != 1 || opened.Snapshots[0].ID != futureID {
+		t.Fatal("package restore source incomplete")
+	}
+	source.Target, source.PackageFile, source.Repository = "local", "", opened.Repository
 	r := recoveryRequest{Source: source, Directory: restored, Snapshot: futureID}
 	history := recoveryCLI(t, ctx, binary, newConfigPath, "recovery-snapshots", r)
 	if history.RecoveryKeyID != key.ID {

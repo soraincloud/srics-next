@@ -24,6 +24,7 @@ import (
 const recoveryReceipt = ".srics-recovery.json"
 
 type recoverySource struct {
+	PackageFile     string      `json:"packageFile"`
 	RecoveryKeyFile string      `json:"recoveryKeyFile"`
 	Target          string      `json:"target"`
 	Repository      string      `json:"repository"`
@@ -50,6 +51,7 @@ type recoveryResult struct {
 	VaultPresent bool      `json:"vaultPresent"`
 }
 type recoveryResponse struct {
+	Repository     string            `json:"repository,omitempty"`
 	RecoveryKeyID  string            `json:"recoveryKeyID,omitempty"`
 	PasswordsReset bool              `json:"passwordsReset"`
 	Items          []recoveryItem    `json:"items,omitempty"`
@@ -256,7 +258,11 @@ func recoveryManager(ctx context.Context, action, path, binary string, input io.
 	}
 	var response recoveryResponse
 	var err error
-	if action == "recovery-reset-passwords" {
+	if action == "recovery-package-open" {
+		packageCtx, cancel := context.WithTimeout(ctx, 24*time.Hour)
+		defer cancel()
+		response, err = openRecoveryPackage(packageCtx, path, binary, request)
+	} else if action == "recovery-reset-passwords" {
 		response, err = resetRecoveryPasswords(ctx, path, request)
 	} else if action == "recovery-items" || action == "recovery-export" {
 		response, err = recoveryExportRequest(ctx, path, request)

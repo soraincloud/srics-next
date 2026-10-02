@@ -1,8 +1,8 @@
 # SRICS Next 试用包安装说明
 
-版本：v0.3.0-rc16 · Build 21。当前包：Apple Silicon（M 系列）Mac，macOS 27.0 或更新版本。
+版本：v0.3.0-rc17 · Build 22。当前包：Apple Silicon（M 系列）Mac，macOS 27.0 或更新版本。
 
-本机交付直接提供 `SRICS Next.app` 并在 Finder 中选中，不生成压缩包。2026-10-02 的 build 21 将备份设置改为分步向导；新备份的独立加密钥匙由程序自动生成并保管，不再要求手工准备口令文件。保留旧版仓库连接与应急恢复 JSON。当前应用位于 `dist/0.3.0-rc16-build21/SRICS Next.app`。变化见 [更新记录](../CHANGELOG.md)。
+本机交付直接提供 `SRICS Next.app` 并在 Finder 中选中，不生成应用压缩包。2026-10-02 的 Build 22 新增完整加密备份包导出与从包恢复，可用于 OneDrive 等网盘手动备份；恢复 JSON 单独保管。备份设置继续使用分步向导，本机自动管理日常加密钥匙。当前应用位于 `dist/0.3.0-rc17-build22/SRICS Next.app`。变化见 [更新记录](../CHANGELOG.md)。
 
 这是现有构建机生成的试用包。程序窗口本身以 macOS 13 为编译目标，但本包的服务和部分内置库要求 macOS 27；打包脚本现在会按全部内置组件的最高要求设置最低系统版本。旧系统需要另外构建兼容依赖的包，不能通过修改版本标记获得兼容性。
 

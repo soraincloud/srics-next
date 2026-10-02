@@ -20,6 +20,7 @@ struct BackupSnapshot: Decodable, Identifiable, Sendable {
     }
 }
 struct RecoverySource: Codable, Equatable, Sendable {
+    var packageFile = ""
     var recoveryKeyFile = ""
     var target = "local"
     var repository = ""
@@ -48,6 +49,7 @@ struct RecoveryResult: Decodable, Sendable {
     let vaultPresent: Bool
 }
 struct RecoveryResponse: Decodable, Sendable {
+    var repository: String?
     var recoveryKeyID: String?
     var passwordsReset: Bool?
     var items: [RecoveredItem]?
@@ -87,6 +89,8 @@ final class RecoveryProcess: @unchecked Sendable {
         if wasCancelled {
             let message: String
             if action.hasPrefix("backup-setup") { message = "任务已取消。已保存的配置、本机钥匙与备份会保留，可重新打开向导检查并继续。" }
+            else if action == "backup-package-export" { message = "导出已取消。已创建的备份会保留，未完成的包不会发布；请重新选择一个文件名导出。" }
+            else if action == "recovery-package-open" { message = "导入已取消，未完成的导入目录会清理；原备份包与 JSON 保持不变。" }
             else if action == "recovery-key-confirm" { message = "验证已取消。请使用同一份恢复 JSON 重试验证，无需重新生成。" }
             else if action == "recovery-key-generate" { message = "任务已取消。如果已经导出 JSON，请重新选择该文件验证；尚未导出则重试生成。" }
             else { message = "任务已取消。已生成的目录会保留，重试请选择新目录。" }
@@ -123,6 +127,7 @@ final class RecoveryProcess: @unchecked Sendable {
     @Published var activated = false
     @Published var recoveryKeyID = ""
     @Published var passwordsReset = false
+    @Published var importedRepository = ""
     private var command: RecoveryProcess?
     init(config: LocalConfig) { source = RecoverySource(config: config) }
     func supports(_ entry: BackupSnapshot) -> Bool { source.recoveryKeyFile.isEmpty || (entry.recoveryKeys ?? []).contains(recoveryKeyID) }
@@ -132,7 +137,7 @@ final class RecoveryProcess: @unchecked Sendable {
         if action == "recovery-restore" && (snapshot == nil || directory.isEmpty) { return }
         guard let payload = try? JSONEncoder().encode(RecoveryRequest(source: source, snapshot: snapshot ?? "", directory: result?.directory ?? directory)) else { return }
         let process = RecoveryProcess(); command = process
-        busy = true; failed = false; message = action == "recovery-snapshots" ? "正在读取备份历史…" : action == "recovery-activate" ? "正在复核并切换资料库…" : action == "recovery-inspect" ? "正在校验恢复目录…" : "正在恢复文件并校验，请保持窗口打开…"
+        busy = true; failed = false; message = action == "recovery-package-open" ? "正在导入并校验备份包，请保持窗口打开…" : action == "recovery-snapshots" ? "正在读取备份历史…" : action == "recovery-activate" ? "正在复核并切换资料库…" : action == "recovery-inspect" ? "正在校验恢复目录…" : "正在恢复文件并校验，请保持窗口打开…"
         AppDelegate.recoveryBusy = true
         Task {
             do {
@@ -140,7 +145,8 @@ final class RecoveryProcess: @unchecked Sendable {
                     if action == "recovery-activate" { _ = try runManager("stop") }
                     return try process.run(action, payload: payload, as: RecoveryResponse.self)
                 }.value
-                if action == "recovery-snapshots" {
+                if action == "recovery-snapshots" || action == "recovery-package-open" {
+                    if action == "recovery-package-open", let repository = response.repository { source.target = "local"; source.repository = repository; source.packageFile = ""; directory = ""; importedRepository = repository }
                     recoveryKeyID = response.recoveryKeyID ?? ""
                     snapshots = response.snapshots ?? []; snapshot = snapshots.first(where: { supports($0) })?.id
                     step = 1; message = snapshots.isEmpty ? "这个目标还没有资料库快照。" : ""
@@ -151,6 +157,14 @@ final class RecoveryProcess: @unchecked Sendable {
             } catch { failed = true; message = error.localizedDescription }
             command = nil; busy = false; AppDelegate.recoveryBusy = false
         }
+    }
+    func openPackage() {
+        let panel = NSOpenPanel(); panel.canChooseFiles = false; panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false; panel.canCreateDirectories = true
+        panel.prompt = "选择导入位置"; panel.message = "将在此处新建加密仓库副本。导入和恢复各需一份资料库大小的空间，恢复完成后可删除导入副本。"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        directory = url.appendingPathComponent("SRICS-imported-\(UUID().uuidString)").path
+        perform("recovery-package-open")
     }
     func cancel() { command?.cancel() }
     func openRecovered() {
@@ -203,11 +217,14 @@ struct RecoveryView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         GlobalCard("备份来源", icon: "externaldrive") {
-                            Picker("存储类型", selection: $model.source.target) { Text("本地 / 独立硬盘").tag("local"); Text("云端 S3").tag("cloud") }
-                            Picker("解锁方式", selection: $useRecoveryKey) { Text("备份口令").tag(false); Text("恢复密钥").tag(true) }
-                                .onChange(of: useRecoveryKey) { enabled in if !enabled { model.source.recoveryKeyFile = "" } }
+                            Picker("存储类型", selection: $model.source.target) { Text("本地 / 独立硬盘").tag("local"); Text("云端 S3").tag("cloud"); Text("加密备份包").tag("package") }
+                                .onChange(of: model.source.target) { target in if target == "package" { useRecoveryKey = true } }
+                            if model.source.target != "package" { Picker("解锁方式", selection: $useRecoveryKey) { Text("备份口令").tag(false); Text("恢复密钥").tag(true) }
+                                .onChange(of: useRecoveryKey) { enabled in if !enabled { model.source.recoveryKeyFile = "" } } }
                             if useRecoveryKey { pathField("恢复密钥文件", $model.source.recoveryKeyFile) }
-                            if model.source.target == "local" {
+                            if model.source.target == "package" {
+                                pathField("加密备份包", $model.source.packageFile)
+                            } else if model.source.target == "local" {
                                 pathField("备份目录", $model.source.repository, directory: true)
                                 if !useRecoveryKey { pathField("备份口令文件", $model.source.passwordFile) }
                             } else {
@@ -221,7 +238,7 @@ struct RecoveryView: View {
                                 pathField("自定义 CA（可选）", $model.source.cloud.connection.caFile)
                             }
                         }
-                        Text(useRecoveryKey ? "选择已启用的恢复文件（权限 600），无需原备份口令。云端恢复仍需存储桶访问凭据。" : "填写备份时使用的连接信息和独立备份口令文件（权限 600）。这些设置仅用于本次恢复。").font(.caption).foregroundStyle(.secondary)
+                        Text(model.source.target == "package" ? "仅需完整 .sricsbackup 包与匹配的恢复 JSON，无需原机器、登录密码或保险库口令。下一步选择导入位置并校验包。" : useRecoveryKey ? "选择已启用的恢复文件（权限 600），无需原备份口令。云端恢复仍需存储桶访问凭据。" : "填写备份时使用的连接信息和独立备份口令文件（权限 600）。这些设置仅用于本次恢复。").font(.caption).foregroundStyle(.secondary)
                     }.padding(24)
                 }.disabled(model.busy)
             } else if model.step == 1 {
@@ -239,6 +256,7 @@ struct RecoveryView: View {
                     .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(GlobalPalette.line, lineWidth: 1.5))
                     HStack { Text("恢复到新目录").font(.headline); Spacer(); Button("选择存放位置…") { model.chooseDestination() } }
                     Text(model.directory.isEmpty ? "选择磁盘上的存放位置，将自动生成一个新目录。" : model.directory).font(.callout).foregroundStyle(.secondary).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    if !model.importedRepository.isEmpty { Text("加密导入副本：\(URL(fileURLWithPath: model.importedRepository).deletingLastPathComponent().path)。恢复完成后可删除此副本，保留原备份包与 JSON。").font(.caption).foregroundStyle(.secondary).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) }
                     Text("恢复后自动校验。原资料保持不变，云端恢复可能产生下载费用。").font(.caption).foregroundStyle(.secondary)
                 }.padding(24).disabled(model.busy)
             } else if let result = model.result {
@@ -246,6 +264,7 @@ struct RecoveryView: View {
                     Label(model.activated ? "资料库已启用" : "恢复校验通过", systemImage: "checkmark.circle").font(.title2)
                     Text(result.directory).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                     Text("快照：\(result.snapshot)").font(.system(size: 11, design: .monospaced)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    if !model.importedRepository.isEmpty { Text("恢复完成后可删除加密导入副本：\(URL(fileURLWithPath: model.importedRepository).deletingLastPathComponent().path)。原备份包与 JSON 继续保留。").font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
                     Text("校验记录已保存为 .srics-recovery.json。").font(.caption).foregroundStyle(.secondary)
                     if result.vaultPresent { Text(model.source.recoveryKeyFile.isEmpty ? "私密文件保持加密。请使用备份时的保险库口令解锁确认。" : "取回私密文件时会使用所选恢复密钥解锁。").font(.callout) }
                     if !model.activated { Text("启用会切换资料目录并停止现有服务。若不记得备份时的密码，请先配置恢复后的资料库。").font(.callout).foregroundStyle(.secondary) }
@@ -266,7 +285,7 @@ struct RecoveryView: View {
                     else if model.step == 1 { Button("上一步") { model.step = 0; model.message = "" } }
                     Spacer()
                     Button("关闭") { if model.activated { onActivated() }; dismiss() }.disabled(model.busy)
-                    if model.step == 0 { Button("读取备份历史") { model.perform("recovery-snapshots") }.disabled(model.busy || (useRecoveryKey && model.source.recoveryKeyFile.isEmpty)).buttonStyle(RecoveryActionStyle()) }
+                    if model.step == 0 { Button(model.source.target == "package" ? "导入并校验备份包" : "读取备份历史") { if model.source.target == "package" { model.openPackage() } else { model.perform("recovery-snapshots") } }.disabled(model.busy || (useRecoveryKey && model.source.recoveryKeyFile.isEmpty) || (model.source.target == "package" && model.source.packageFile.isEmpty)).buttonStyle(RecoveryActionStyle()) }
                     else if model.step == 1 { Button("恢复并校验") { model.perform("recovery-restore") }.disabled(model.busy || !model.canRestore || model.directory.isEmpty).buttonStyle(RecoveryActionStyle()) }
                     else if !model.activated { Button("停止服务并启用") { model.perform("recovery-activate") }.disabled(model.busy).buttonStyle(RecoveryActionStyle()) }
                 }

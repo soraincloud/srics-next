@@ -226,6 +226,7 @@ struct LauncherView: View {
     @StateObject private var model = Launcher()
     @State private var showRecovery = false
     @State private var showRecoveryKey = false
+    @State private var showBackupPackage = false
     @State private var backupSetupTarget: BackupSetupTarget?
     @State private var showMigration = false
     @State private var showLoginReset = false
@@ -361,6 +362,16 @@ struct LauncherView: View {
             }
         }
         if pane == .backup {
+            GlobalCard("手动备份包", icon: "shippingbox") {
+                Text("导出一个完整加密文件，手动上传到 OneDrive 等网盘。恢复 JSON 单独保管。")
+                Button("导出完整加密备份包…") { showBackupPackage = true }
+                    .disabled(!model.saved || model.changed || model.running || model.busy || model.config.backupRepository.isEmpty)
+                if model.config.backupRepository.isEmpty {
+                    Text("先用上方本地备份向导选择一个目录，并保存、验证该位置的恢复 JSON。不需要云端 S3。").font(.caption).foregroundStyle(.secondary)
+                } else if model.running {
+                    Text("请先停止服务，再导出备份包。").font(.caption).foregroundStyle(.secondary)
+                }
+            }
             GlobalCard("备份计划", icon: "clock") {
                 Toggle("每天自动备份", isOn: Binding(get: { !model.config.backupDailyAt.isEmpty }, set: { model.config.backupDailyAt = $0 ? "03:00" : "" }))
                     .disabled(model.config.backupRepository.isEmpty && !model.config.cloud.enabled)
@@ -487,6 +498,7 @@ struct LauncherView: View {
         .task { model.refresh() }
         .sheet(isPresented: $showRecovery) { RecoveryView(config: model.config) { model.status = nil; model.refresh() } }
         .sheet(isPresented: $showMigration) { MigrationView(model: model) }
+        .sheet(isPresented: $showBackupPackage) { BackupPackageView() }
         .sheet(isPresented: $showRecoveryKey) { RecoveryKeyView(config: model.config, vaultConfigured: model.status?.vaultSet == true) }
         .sheet(item: $backupSetupTarget) { target in BackupSetupView(config: model.config, target: target.rawValue, vaultConfigured: model.status?.vaultSet == true) { model.status = nil; model.refresh() } }
         .sheet(isPresented: $showLoginReset) { LocalPasswordResetView(model: model) }
