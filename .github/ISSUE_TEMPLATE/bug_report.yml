@@ -1,0 +1,33 @@
+name: 问题报告
+description: 使用合成数据描述可复现的问题
+body:
+  - type: markdown
+    attributes:
+      value: "安全漏洞请先查看 SECURITY.md。不要附上真实资料、密码、恢复 JSON、数据库或云端凭据。"
+  - type: input
+    id: version
+    attributes:
+      label: 版本与 Build
+      description: 从网页关于页或 App 的版本与更新页复制
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: 系统与浏览器
+      placeholder: macOS 版本、Mac 芯片、浏览器及版本
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 使用不包含隐私的合成样本说明
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果与实际结果
+    validations:
+      required: true

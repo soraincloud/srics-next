@@ -14,6 +14,10 @@ var releaseJSON []byte
 // BuiltAt is set to an RFC3339 UTC timestamp by scripts/build.sh.
 var BuiltAt string
 
+// SourceCommit and SourceDirty identify the verified source snapshot, including
+// rebuilds from exported source without a .git directory.
+var SourceCommit, SourceDirty string
+
 type Info struct {
 	Version string `json:"version"`
 	Build   int    `json:"build"`
@@ -38,6 +42,10 @@ func Current() Info {
 				info.Dirty = setting.Value == "true"
 			}
 		}
+	}
+	if SourceDirty != "" {
+		info.Commit = SourceCommit
+		info.Dirty = SourceDirty != "false"
 	}
 	info.Label = fmt.Sprintf("v%s · Build %d", info.Version, info.Build)
 	return info

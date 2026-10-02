@@ -115,6 +115,11 @@ onUnmounted(() => window.removeEventListener("blur", hidePassword));
         </button></template
       >
       <button v-if="ready && !configured" class="button secondary" @click="check">刷新状态</button>
+      <footer class="open-source-links" aria-label="开源许可与源码">
+        <a href="/legal/LICENSE.txt" target="_blank" rel="noopener">AGPL-3.0</a>
+        <a href="/legal/source.tar.gz" download>下载源码</a>
+        <a href="/legal/NOTICE.txt" target="_blank" rel="noopener">版权与免责说明</a>
+      </footer>
     </main>
   </div>
 </template>

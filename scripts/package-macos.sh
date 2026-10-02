@@ -25,6 +25,10 @@ app="${SRICS_APP_OUTPUT:-$PWD/dist/SRICS Next.app}"
 [[ "$app" = /* && "$app" = *.app ]] || { echo 'SRICS_APP_OUTPUT 需要是以 .app 结尾的绝对路径。' >&2; exit 1; }
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/bin/tools" "$app/Contents/Resources/licenses"
 cp bin/srics "$app/Contents/Resources/bin/srics"
+python3 scripts/prepare-open-source.py --verify
+mkdir -p "$app/Contents/Resources/licenses/SRICS-Next"
+cp internal/webui/dist/legal/source.tar.gz internal/webui/dist/legal/source-info.json "$app/Contents/Resources/"
+cp internal/webui/dist/legal/*.txt "$app/Contents/Resources/licenses/SRICS-Next/"
 swiftc -O -parse-as-library -target "$(uname -m)-apple-macosx13.0" desktop/*.swift -o "$app/Contents/MacOS/SRICS Next"
 icon_workdir="$(mktemp -d "${TMPDIR:-/tmp}/srics-icon.XXXXXX")"
 trap 'rm -rf "$icon_workdir"' EXIT

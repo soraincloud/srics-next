@@ -2,7 +2,13 @@
 
 用于局域网的个人资料库：管理漫画、小说、图片、个人照片、私密照片与个人文件。
 
-**当前版本：v0.3.0-rc18 · Build 24。Apple Silicon Mac，macOS 27.0 或更新版本。**
+Self-hosted personal library with private storage, encrypted backups, and disaster recovery.
+
+**当前版本：v0.3.0-rc19 · Build 25，公开测试版。Apple Silicon Mac，macOS 27.0 或更新版本。**
+
+项目原创代码、文档和应用图标使用 [AGPL-3.0-only](LICENSE)。第三方组件保留各自许可，见 [第三方声明](THIRD_PARTY_NOTICES.md)。许可证不改变用户资料的归属。发布修改版或通过网络提供修改版时，应按 AGPL 提供相应源码。
+
+![资料库界面：空的合成资料库](docs/images/library.jpg)
 
 ## 开始使用
 
@@ -49,9 +55,9 @@
 
 ## 开发与维护
 
-运行结构是 Go 服务、Vue 网页、SQLite 和本地文件，App 随附 cwebp / restic，运行时无需 Go、Node.js 或 Homebrew。界面沿用 Lumoswitch Global 风格。
+运行结构是 Go 服务、Vue 网页、SQLite 和本地文件，App 随附 cwebp / restic，运行时无需 Go、Node.js 或 Homebrew。
 
-源码构建需 Go 1.27.1（或支持下载该工具链的 Go）、Node.js 22.12+ 或 24+、Python 3 和 Xcode Command Line Tools：
+源码构建需 Go 1.27.1（或支持下载该工具链的 Go）、Node.js 22.12+ 或 24+、Python 3.9+；macOS App 打包需完整 Xcode 27+，包含 Icon Composer 和 actool：
 
 ```sh
 brew install webp
@@ -61,7 +67,11 @@ bash scripts/check-security.sh
 ./scripts/package-macos.sh --skip-build
 ```
 
-日常开发与本机检查使用 `develop`，通过 GitHub Desktop 推送；`main` 保留验收版本，不创建 PR。GitHub Actions 仅手动触发，普通推送不消耗构建额度。直接交付未压缩 App，并在 Finder 中选中。
+日常开发使用 `develop`，`main` 保留验收版本。GitHub Actions 仅手动触发，普通推送和 PR 不消耗构建额度。维护者通过 GitHub Desktop 推送，可直接交付未压缩 App。
+
+每次构建自动附上当前源文件、构建脚本、依赖版本记录及许可证；网页登录页、关于页和 App → 版本与更新提供源码入口。源码包仅包含项目文件，不包含资料目录、配置、密码或恢复 JSON。构建后的源文件变动会使打包校验失败，需重新构建。
+
+问题反馈和代码贡献见 [CONTRIBUTING.md](CONTRIBUTING.md)，安全问题请按 [SECURITY.md](SECURITY.md) 私下报告。目前未验收其他操作系统、公网或多用户部署。
 
 版本与构建号的唯一来源是 [release.json](internal/buildinfo/release.json)。维护和打包规则见 [版本约定](docs/VERSIONING.md)，后台管理见 [本机程序](docs/LOCAL_LAUNCHER.md)，构建约定见 [构建说明](docs/BUILD_WORKFLOW.md)。真实资料、配置、数据库、密码、凭据、恢复 JSON 与备份不得提交到仓库。
 

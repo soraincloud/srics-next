@@ -16,3 +16,14 @@
 .env
 .env.*
 !.env.example
+*.sricsbackup
+*.p12
+*.pfx
+*.key
+config.json
+credentials.json
+*-recovery.json
+*recovery-key*.json
+SRICS*恢复*.json
+__pycache__/
+*.pyc

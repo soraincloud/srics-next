@@ -277,6 +277,16 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
             <div><dt>代码版本</dt><dd :title="release.commit">{{ release.commit ? release.commit.slice(0, 12) : '未记录' }}{{ release.dirty ? '（含未提交修改）' : '' }}</dd></div>
             <div><dt>构建时间（UTC）</dt><dd>{{ release.builtAt ? release.builtAt.replace('T', ' ').replace('Z', '') : '未记录' }}</dd></div>
           </dl>
+          <section class="open-source-note panel">
+            <h2>开源许可</h2>
+            <p>SRICS Next 使用 AGPL-3.0，仅提供软件本身，不作担保。资料库中的文件由你自行管理。</p>
+            <div class="open-source-links">
+              <a href="/legal/LICENSE.txt" target="_blank" rel="noopener">许可证</a>
+              <a href="/legal/source.tar.gz" download>下载当前构建源码</a>
+              <a href="/legal/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">第三方声明</a>
+              <a href="/legal/NOTICE.txt" target="_blank" rel="noopener">版权与免责说明</a>
+            </div>
+          </section>
           <div class="about-notes">
             <div><Icon name="book" /><h3>名称与标签</h3><p>漫画和小说可在新建、上传或编辑时设置标签，用逗号分隔。名称搜索和标签筛选可同时使用，多个标签需全部满足。</p></div>
             <div><Icon name="shield" /><h3>备份与恢复</h3><p>所有新备份使用同一种 .sricsbackup 文件。恢复时选择完整备份和单独保管的恢复 JSON；设置与恢复在本机 App 中完成。</p></div>

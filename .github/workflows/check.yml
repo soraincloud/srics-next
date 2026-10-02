@@ -23,13 +23,13 @@ jobs:
           HOMEBREW_NO_AUTO_UPDATE: '1'
       - run: ./scripts/check.sh
       - run: bash scripts/check-security.sh
-      - run: ./scripts/package-macos.sh --skip-build
-      - name: Verify bundled runtime without Homebrew
-        run: env PATH=/usr/bin:/bin:/usr/sbin:/sbin './dist/SRICS Next.app/Contents/Resources/bin/srics' verify --report reports/bundled-runtime.json
+      # App packaging needs Xcode / Icon Composer 27 and is performed locally.
+      - name: Verify embedded source and license
+        run: python3 scripts/prepare-open-source.py --verify
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: m0-verification-report
+          name: verification-reports
           path: |
             reports/*.json
             reports/security-*.txt

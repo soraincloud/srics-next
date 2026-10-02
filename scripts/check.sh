@@ -4,6 +4,7 @@ cd "$(dirname "$0")/.."
 ./scripts/build.sh
 export PATH="$PWD/bin/tools:$PATH"
 npm --prefix web test
+python3 -B scripts/tests/test_open_source.py
 if [[ "$(uname -s)" == Darwin ]]; then bash ./scripts/check-passwords.sh; fi
 go vet ./...
 go test -race ./...

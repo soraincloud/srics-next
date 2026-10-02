@@ -1,0 +1,18 @@
+SRICS Next
+Copyright (c) 2026 soraincloud and SRICS Next contributors.
+
+SPDX-License-Identifier: AGPL-3.0-only
+
+SRICS Next's original code, documentation, synthetic test fixtures, and application
+icon source are licensed under the GNU Affero General Public License, version 3
+only. See LICENSE for the complete terms. The software is provided without
+warranty; see sections 15 and 16 of that license.
+
+Third-party components retain their own copyrights and licenses. See
+THIRD_PARTY_NOTICES.md, LICENSES/, and the notices generated with each build.
+This license applies to the software, not to files stored in a user's library.
+
+The web interface offers the source of the running build at /legal/source.tar.gz.
+The macOS application includes the same source archive in Contents/Resources.
+Rebuild a modified version with scripts/build.sh so that this archive matches
+the version served to network users.

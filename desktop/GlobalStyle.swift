@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-// Shared with the web app's Lumoswitch Global-inspired monochrome palette.
+// Shared with the SRICS web app's monochrome palette.
 enum GlobalPalette {
     private static func adaptive(_ light: UInt32, _ dark: UInt32) -> Color {
         Color(NSColor(name: nil) { appearance in

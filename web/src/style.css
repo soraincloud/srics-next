@@ -241,6 +241,12 @@ progress::-moz-progress-bar { background: var(--strong); border-radius: 6px; }
 .release-metadata { display: flex; flex-wrap: wrap; gap: 20px 40px; margin: 20px 0 28px; font-size: 12px; }
 .release-metadata dt { color: var(--muted); margin-bottom: 6px; }
 .release-metadata dd { color: var(--secondary); margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.open-source-note { padding: 22px 26px; }
+.open-source-note h2 { font-size: 14px; }
+.open-source-note p { margin-top: 8px; color: var(--secondary); font-size: 12px; line-height: 1.8; }
+.open-source-links { display: flex; flex-wrap: wrap; gap: 4px 20px; margin-top: 12px; color: var(--secondary); font-size: 11px; }
+.open-source-links a { display: inline-flex; align-items: center; min-height: 44px; text-decoration: underline; text-underline-offset: 4px; }
+.open-source-links a:hover { color: var(--strong); }
 .about-notes { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin: 28px 4px 12px; }
 .about-notes svg { color: var(--strong); margin-bottom: 10px; width: 23px; height: 23px; }
 .about-notes h3 { font-size: 14px; font-weight: 700; }

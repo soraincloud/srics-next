@@ -399,6 +399,21 @@ struct LauncherView: View {
                 if model.busy && AppDelegate.recoveryBusy { Button("取消更新准备") { model.cancelUpdate() } }
                 Text("先完成加密备份并保留旧程序，再退出、替换 .app 并重新启动；失败时不替换程序。需要已完成的备份设置。").font(.caption).foregroundStyle(.secondary)
             }
+            GlobalCard("开源许可", icon: "doc.text") {
+                Text("AGPL-3.0 · SRICS Next contributors").font(.callout)
+                Text("软件不作担保。源码与第三方许可随程序提供，资料库中的文件由你自行管理。").font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    if let license = Bundle.main.url(forResource: "LICENSE", withExtension: "txt", subdirectory: "licenses/SRICS-Next") {
+                        Button("查看许可证") { NSWorkspace.shared.open(license) }
+                    }
+                    if let source = Bundle.main.url(forResource: "source.tar", withExtension: "gz") {
+                        Button("显示当前构建源码") { NSWorkspace.shared.activateFileViewerSelecting([source]) }
+                    }
+                    if let notices = Bundle.main.url(forResource: "THIRD_PARTY_NOTICES", withExtension: "txt", subdirectory: "licenses/SRICS-Next") {
+                        Button("第三方声明") { NSWorkspace.shared.open(notices) }
+                    }
+                }
+            }
         }
     }
 

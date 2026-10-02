@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -135,7 +136,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
-		if r.URL.Path != "/" && !strings.HasPrefix(r.URL.Path, "/assets/") {
+		if r.URL.Path != "/" && path.Clean(r.URL.Path) != r.URL.Path {
+			http.NotFound(w, r)
+			return
+		}
+		legalFiles := map[string]bool{
+			"/legal/LICENSE.txt": true, "/legal/NOTICE.txt": true,
+			"/legal/THIRD_PARTY_NOTICES.txt": true, "/legal/source-info.json": true,
+			"/legal/source.tar.gz": true,
+		}
+		if r.URL.Path != "/" && !strings.HasPrefix(r.URL.Path, "/assets/") && !legalFiles[r.URL.Path] {
 			http.NotFound(w, r)
 			return
 		}
@@ -144,6 +154,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Run ./scripts/build.sh to build the web interface.", http.StatusServiceUnavailable)
 				return
 			}
+		}
+		if r.URL.Path == "/legal/source.tar.gz" {
+			w.Header().Set("Content-Disposition", `attachment; filename="SRICS-Next-source.tar.gz"`)
+			w.Header().Set("Content-Type", "application/gzip")
 		}
 		http.FileServer(http.FS(s.files)).ServeHTTP(w, r)
 	}

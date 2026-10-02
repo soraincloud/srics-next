@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 安全问题报告方式
+    url: https://github.com/soraincloud/srics-next/blob/main/SECURITY.md
+    about: 安全问题不要通过公开 Issue 披露
