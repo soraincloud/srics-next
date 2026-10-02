@@ -400,8 +400,8 @@ struct LauncherView: View {
                 Text("先完成加密备份并保留旧程序，再退出、替换 .app 并重新启动；失败时不替换程序。需要已完成的备份设置。").font(.caption).foregroundStyle(.secondary)
             }
             GlobalCard("开源许可", icon: "doc.text") {
-                Text("AGPL-3.0 · SRICS Next contributors").font(.callout)
-                Text("软件不作担保。源码与第三方许可随程序提供，资料库中的文件由你自行管理。").font(.caption).foregroundStyle(.secondary)
+                Text("© 2026 SRICS Next contributors · AGPL-3.0").font(.callout)
+                Text("你可以按 AGPL 复制、修改和分发本软件，软件不作担保。源码与第三方许可随程序提供，资料库中的文件由你自行管理。").font(.caption).foregroundStyle(.secondary)
                 HStack {
                     if let license = Bundle.main.url(forResource: "LICENSE", withExtension: "txt", subdirectory: "licenses/SRICS-Next") {
                         Button("查看许可证") { NSWorkspace.shared.open(license) }

@@ -3,6 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 command -v go >/dev/null || { echo '需要 Go 1.27.1 或支持自动下载该工具链的 Go。' >&2; exit 1; }
 command -v npm >/dev/null || { echo '构建前端需要 Node.js 22.12+ 或 24+。' >&2; exit 1; }
+python3 scripts/prepare-open-source.py --snapshot
 npm --prefix web ci
 npm --prefix web run build
 touch internal/webui/dist/.gitkeep

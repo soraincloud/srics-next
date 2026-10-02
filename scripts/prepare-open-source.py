@@ -92,6 +92,11 @@ def git_identity(root, names):
             "dirty": bool(run(root, "git", "status", "--porcelain"))}
 
 
+def check_snapshot(snapshot, files, identity):
+    if snapshot["files"] != files or any(snapshot[k] != identity[k] for k in identity):
+        raise ValueError("Source changed during build; rebuild before distribution.")
+
+
 def notices_in(directory):
     return sorted(p for p in directory.iterdir() if p.is_file()
                   and p.name.upper().startswith(("LICENSE", "COPYING", "NOTICE", "PATENTS", "AUTHORS")))
@@ -172,7 +177,10 @@ def write_archive(root, output, names, manifest, third_party):
             info.size, info.mode, info.mtime = len(data), 0o755 if executable else 0o644, 0
             tar.addfile(info, io.BytesIO(data))
         for name in names:
-            add(name, (root / name).read_bytes(), manifest["files"][name]["executable"])
+            data = (root / name).read_bytes()
+            if hashlib.sha256(data).hexdigest() != manifest["files"][name]["sha256"]:
+                raise ValueError("Source changed while archiving: " + name)
+            add(name, data, manifest["files"][name]["executable"])
         add("SOURCE_BUILD.json", json.dumps(manifest, ensure_ascii=False, indent=2).encode() + b"\n")
         add("THIRD_PARTY_NOTICES.txt", third_party.encode())
     os.replace(temp, output / "source.tar.gz")
@@ -180,21 +188,29 @@ def write_archive(root, output, names, manifest, third_party):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--verify", action="store_true", help="fail if source changed during the build")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--verify", action="store_true", help="fail if source changed during the build")
+    mode.add_argument("--snapshot", action="store_true", help="record inputs before frontend and service compilation")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     output = root / "internal/webui/dist/legal"
     names = source_paths(root)
     files = fingerprint(root, names)
     identity = git_identity(root, names)
+    snapshot_path = root / "bin/source-inputs.json"
+    if args.snapshot:
+        snapshot_path.parent.mkdir(exist_ok=True)
+        snapshot_path.write_text(json.dumps({"files": files, **identity}, ensure_ascii=False, indent=2) + "\n")
+        print("已记录构建前源码快照。")
+        return
     if args.verify:
         manifest = json.loads((output / "source-info.json").read_text())
-        if manifest["files"] != files or any(manifest[k] != identity[k] for k in identity):
-            raise SystemExit("Source changed during build; rebuild before distribution.")
+        check_snapshot(manifest, files, identity)
         if hashlib.sha256((output / "source.tar.gz").read_bytes()).hexdigest() != manifest["sourceSHA256"]:
             raise SystemExit("Source archive checksum mismatch.")
         print("源码与构建输入一致。")
         return
+    check_snapshot(json.loads(snapshot_path.read_text()), files, identity)
     release = json.loads((root / "internal/buildinfo/release.json").read_text())
     manifest = {"project": "SRICS Next", "license": "AGPL-3.0-only", **release, **identity, "files": files}
     output.mkdir(parents=True, exist_ok=True)

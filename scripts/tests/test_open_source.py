@@ -95,6 +95,16 @@ class SourcePrivacyChecks(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "symlinks"):
             source.source_paths(exported)
 
+    def test_frontend_change_during_build_invalidates_original_snapshot(self):
+        self.write("web/src/App.vue", "synthetic frontend source")
+        self.stage("web/src/App.vue")
+        names = source.source_paths(self.root)
+        identity = source.git_identity(self.root, names)
+        snapshot = {"files": source.fingerprint(self.root, names), **identity}
+        self.write("web/src/App.vue", "changed after frontend compilation")
+        with self.assertRaisesRegex(ValueError, "Source changed"):
+            source.check_snapshot(snapshot, source.fingerprint(self.root, names), identity)
+
 
 if __name__ == "__main__":
     unittest.main()

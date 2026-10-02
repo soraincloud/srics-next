@@ -279,7 +279,7 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
           </dl>
           <section class="open-source-note panel">
             <h2>开源许可</h2>
-            <p>SRICS Next 使用 AGPL-3.0，仅提供软件本身，不作担保。资料库中的文件由你自行管理。</p>
+            <p>© 2026 SRICS Next contributors。你可以按 AGPL-3.0 复制、修改和分发本软件，软件不作担保。资料库中的文件由你自行管理。</p>
             <div class="open-source-links">
               <a href="/legal/LICENSE.txt" target="_blank" rel="noopener">许可证</a>
               <a href="/legal/source.tar.gz" download>下载当前构建源码</a>
