@@ -19,6 +19,9 @@ except (subprocess.CalledProcessError, json.JSONDecodeError, OSError):
     sys.exit('无法读取服务版本，请先运行 scripts/build.sh。')
 if any(actual.get(key) != declared[key] for key in ('version', 'build')):
     sys.exit('服务版本与 release.json 不一致，请重新构建后打包。')
+source = json.loads(pathlib.Path('internal/webui/dist/legal/source-info.json').read_text())
+if any(actual.get(key) != source[key] for key in ('version', 'build', 'commit', 'dirty', 'sourceSHA256')):
+    sys.exit('服务与源码包来自不同构建，请重新运行 scripts/build.sh。')
 print('准备打包：' + actual['label'])
 PY
 app="${SRICS_APP_OUTPUT:-$PWD/dist/SRICS Next.app}"

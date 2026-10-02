@@ -17,14 +17,16 @@ var BuiltAt string
 // SourceCommit and SourceDirty identify the verified source snapshot, including
 // rebuilds from exported source without a .git directory.
 var SourceCommit, SourceDirty string
+var SourceArchiveSHA string
 
 type Info struct {
-	Version string `json:"version"`
-	Build   int    `json:"build"`
-	Commit  string `json:"commit"`
-	Dirty   bool   `json:"dirty"`
-	BuiltAt string `json:"builtAt"`
-	Label   string `json:"label"`
+	Version      string `json:"version"`
+	Build        int    `json:"build"`
+	Commit       string `json:"commit"`
+	Dirty        bool   `json:"dirty"`
+	BuiltAt      string `json:"builtAt"`
+	Label        string `json:"label"`
+	SourceSHA256 string `json:"sourceSHA256,omitempty"`
 }
 
 func Current() Info {
@@ -33,6 +35,7 @@ func Current() Info {
 		panic("invalid embedded release.json")
 	}
 	info.BuiltAt = BuiltAt
+	info.SourceSHA256 = SourceArchiveSHA
 	if build, ok := debug.ReadBuildInfo(); ok {
 		for _, setting := range build.Settings {
 			switch setting.Key {

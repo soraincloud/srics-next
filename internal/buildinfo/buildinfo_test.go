@@ -15,3 +15,12 @@ func TestExportedSourceIdentity(t *testing.T) {
 		t.Fatal("modified source export was reported as clean")
 	}
 }
+
+func TestSourceArchiveIdentity(t *testing.T) {
+	old := SourceArchiveSHA
+	defer func() { SourceArchiveSHA = old }()
+	SourceArchiveSHA = "synthetic-source-archive-digest"
+	if Current().SourceSHA256 != SourceArchiveSHA {
+		t.Fatal("source archive identity was omitted")
+	}
+}

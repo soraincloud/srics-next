@@ -13,6 +13,7 @@ python3 scripts/prepare-open-source.py
 build_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 source_commit="$(python3 -c 'import json,re; s=json.load(open("internal/webui/dist/legal/source-info.json"))["commit"]; assert not s or re.fullmatch("[0-9a-f]{40,64}",s); print(s)')"
 source_dirty="$(python3 -c 'import json; print(str(json.load(open("internal/webui/dist/legal/source-info.json"))["dirty"]).lower())')"
-CGO_ENABLED=1 go build -trimpath -ldflags "-X github.com/soraincloud/srics-next/internal/buildinfo.BuiltAt=$build_time -X github.com/soraincloud/srics-next/internal/buildinfo.SourceCommit=$source_commit -X github.com/soraincloud/srics-next/internal/buildinfo.SourceDirty=$source_dirty" -o bin/srics ./cmd/srics
+source_sha="$(python3 -c 'import json,re; s=json.load(open("internal/webui/dist/legal/source-info.json"))["sourceSHA256"]; assert re.fullmatch("[0-9a-f]{64}",s); print(s)')"
+CGO_ENABLED=1 go build -trimpath -ldflags "-X github.com/soraincloud/srics-next/internal/buildinfo.BuiltAt=$build_time -X github.com/soraincloud/srics-next/internal/buildinfo.SourceCommit=$source_commit -X github.com/soraincloud/srics-next/internal/buildinfo.SourceDirty=$source_dirty -X github.com/soraincloud/srics-next/internal/buildinfo.SourceArchiveSHA=$source_sha" -o bin/srics ./cmd/srics
 python3 scripts/prepare-open-source.py --verify
 echo '已构建 bin/srics；运行 ./start.command 打开本机资料库。'
