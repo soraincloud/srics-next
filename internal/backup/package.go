@@ -35,13 +35,15 @@ type PackageFile struct {
 	SHA256 string `json:"sha256"`
 }
 type PackageManifest struct {
-	Format        string        `json:"format"`
-	Version       int           `json:"version"`
-	CreatedAt     time.Time     `json:"createdAt"`
-	RepositoryID  string        `json:"repositoryID"`
-	Snapshot      string        `json:"snapshot"`
-	RecoveryKeyID string        `json:"recoveryKeyID"`
-	Files         []PackageFile `json:"files"`
+	Format           string        `json:"format"`
+	Version          int           `json:"version"`
+	CreatedAt        time.Time     `json:"createdAt"`
+	RepositoryID     string        `json:"repositoryID"`
+	Snapshot         string        `json:"snapshot"`
+	RecoveryKeyID    string        `json:"recoveryKeyID"`
+	LibraryID        string        `json:"libraryID,omitempty"`
+	RecoveryEnvelope []byte        `json:"recoveryEnvelope,omitempty"`
+	Files            []PackageFile `json:"files"`
 }
 
 var resticPackageDirectory = regexp.MustCompile(`^data/[a-f0-9]{2}$`)
@@ -140,7 +142,10 @@ func ExportPackage(ctx context.Context, repository, file string, manifest Packag
 	if err != nil {
 		return err
 	}
-	manifest.Format, manifest.Version, manifest.CreatedAt = "srics-encrypted-backup", 1, time.Now().UTC()
+	manifest.Format, manifest.CreatedAt = "srics-encrypted-backup", time.Now().UTC()
+	if manifest.Version == 0 {
+		manifest.Version = 1
+	}
 	manifest.Files = nil
 	var expected uint64
 	for _, name := range names {
@@ -307,8 +312,16 @@ func packageStructure(zr *zip.Reader) (PackageManifest, error) {
 	defer r.Close()
 	d := json.NewDecoder(io.LimitReader(r, maxManifestBytes+1))
 	d.DisallowUnknownFields()
-	if d.Decode(&m) != nil || d.Decode(&struct{}{}) != io.EOF || m.Format != "srics-encrypted-backup" || m.Version != 1 || m.CreatedAt.IsZero() || !snapshotID.MatchString(m.RepositoryID) || !snapshotID.MatchString(m.Snapshot) || !snapshotID.MatchString(m.RecoveryKeyID) || len(m.Files) != len(zr.File)-1 {
+	if d.Decode(&m) != nil || d.Decode(&struct{}{}) != io.EOF || m.Format != "srics-encrypted-backup" || (m.Version != 1 && m.Version != 2) || m.CreatedAt.IsZero() || !snapshotID.MatchString(m.RepositoryID) || !snapshotID.MatchString(m.Snapshot) || !snapshotID.MatchString(m.RecoveryKeyID) || len(m.Files) != len(zr.File)-1 {
 		return m, errors.New("备份清单无效或版本不支持")
+	}
+	if m.Version == 2 {
+		id, err := hex.DecodeString(m.LibraryID)
+		if err != nil || len(id) != 16 || len(m.RecoveryEnvelope) < 100 || len(m.RecoveryEnvelope) > 16384 {
+			return m, errors.New("备份恢复封装无效")
+		}
+	} else if m.LibraryID != "" || len(m.RecoveryEnvelope) > 0 {
+		return m, errors.New("旧版备份清单含未知恢复封装")
 	}
 	var total uint64
 	listed := map[string]bool{}

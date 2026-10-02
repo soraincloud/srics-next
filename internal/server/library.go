@@ -47,6 +47,7 @@ type LibraryAPI struct {
 	maintenanceError   string
 	maintenanceMu      sync.Mutex
 	retention          backup.Retention
+	unified            *backup.Unified
 	backup             backup.Client
 	cloud              backup.Client
 	backupMu           sync.Mutex

@@ -101,6 +101,9 @@ func validateCloud(c localConfig) error {
 }
 
 func configuredCloud(c localConfig, binary string) (backup.Client, error) {
+	if c.Unified != nil {
+		return backup.Client{}, nil
+	}
 	client := backup.Client{Binary: binary}
 	if !c.Cloud.Enabled {
 		return client, nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/soraincloud/srics-next/internal/recoverykey"
 	"io"
 	"os"
 	"path/filepath"
@@ -153,7 +154,7 @@ func openRecoveryPackage(ctx context.Context, configPath, binary string, request
 	if err != nil {
 		return response, err
 	}
-	if metadata.RepositoryID != key.RepositoryID || metadata.RecoveryKeyID != key.ID {
+	if err = matchRecoveryPackage(metadata, key); err != nil {
 		return response, errors.New("备份包与恢复 JSON 不匹配，未恢复资料")
 	}
 	// Extraction happens once, to an explicit new workspace, reused by all later
@@ -168,10 +169,10 @@ func openRecoveryPackage(ctx context.Context, configPath, binary string, request
 			os.RemoveAll(dest)
 		}
 	}()
-	if manifest.RepositoryID != key.RepositoryID || manifest.RecoveryKeyID != key.ID {
+	if err = matchRecoveryPackage(manifest, key); err != nil {
 		return response, errors.New("备份包与恢复 JSON 不匹配，未恢复资料")
 	}
-	source := recoverySource{Target: "local", Repository: filepath.Join(dest, "repository"), RecoveryKeyFile: request.Source.RecoveryKeyFile}
+	source := recoverySource{Target: "local", Repository: filepath.Join(dest, "repository"), RecoveryKeyFile: request.Source.RecoveryKeyFile, RecoveryEnvelope: manifest.RecoveryEnvelope}
 	client, err := source.client(ctx, binary)
 	if err != nil {
 		return response, err
@@ -192,6 +193,30 @@ func openRecoveryPackage(ctx context.Context, configPath, binary string, request
 		return response, errors.New("备份包中的最新恢复点无法使用此 JSON")
 	}
 	response.Repository, response.RecoveryKeyID = source.Repository, key.ID
+	response.RecoveryEnvelope = manifest.RecoveryEnvelope
 	ok = true
 	return response, nil
+}
+
+func matchRecoveryPackage(m backup.PackageManifest, k *recoveryKeyFile) error {
+	if m.RecoveryKeyID != k.ID || m.Version != k.Version {
+		return errors.New("备份与恢复 JSON 不匹配")
+	}
+	if k.Version == 1 {
+		if m.RepositoryID != k.RepositoryID {
+			return errors.New("旧版备份与恢复 JSON 不匹配")
+		}
+		return nil
+	}
+	if m.LibraryID != k.LibraryID {
+		return errors.New("备份属于其他资料库")
+	}
+	e, err := recoverykey.OpenEnvelope(k.Secret, m.RecoveryEnvelope, k.LibraryID)
+	if err != nil {
+		return err
+	}
+	if e.RepositoryID != m.RepositoryID || e.Snapshot != m.Snapshot {
+		return errors.New("备份恢复封装与清单不匹配")
+	}
+	return nil
 }

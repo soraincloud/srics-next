@@ -15,6 +15,8 @@ import (
 )
 
 type backupRecord struct {
+	File         string `json:"file,omitempty"`
+	Bytes        int64  `json:"bytes,omitempty"`
 	CleanupAt    string `json:"cleanupAt,omitempty"`
 	CleanupError string `json:"cleanupError,omitempty"`
 	Repository   string `json:"repository,omitempty"`
@@ -105,7 +107,7 @@ func nextBackup(now time.Time, at string, record backupRecord) time.Time {
 // Call once before serving requests; the scheduler never overlaps manual work.
 func (s *Server) StartBackupSchedule(at string) {
 	a := s.library
-	if a == nil || at == "" || (a.backup.Repository == "" && a.cloud.Repository == "") {
+	if a == nil || at == "" || (a.unified == nil && a.backup.Repository == "" && a.cloud.Repository == "") {
 		return
 	}
 	if _, err := time.Parse("15:04", at); err != nil || len(at) != 5 {
@@ -119,7 +121,18 @@ func (s *Server) StartBackupSchedule(at string) {
 		defer timer.Stop()
 		for {
 			now := time.Now()
-			for _, target := range []string{"local", "cloud"} {
+			targets := []string{"local", "cloud"}
+			if a.unified != nil {
+				targets = []string{"unified"}
+			}
+			for _, target := range targets {
+				if target == "unified" {
+					r, e := a.readUnifiedRecord()
+					if e == nil && !nextBackup(now, at, r).After(now) {
+						_ = a.startUnifiedBackup()
+					}
+					continue
+				}
 				if a.backupClient(target).Repository == "" {
 					continue
 				}
@@ -138,6 +151,9 @@ func (s *Server) StartBackupSchedule(at string) {
 }
 
 func (a *LibraryAPI) backupStatus(target ...string) (any, error) {
+	if a.unified != nil {
+		return a.unifiedStatus()
+	}
 	name := targetName(target)
 	client := a.backupClient(name)
 	a.backupMu.Lock()
@@ -157,10 +173,13 @@ func (a *LibraryAPI) backupStatus(target ...string) (any, error) {
 		record.Status, record.Error = "failed", "上次备份因服务停止而中断，尚未确认成功"
 	}
 	zone, _ := time.Now().Zone()
-	return map[string]any{"target": name, "destination": client.Repository, "configured": client.Repository != "", "running": a.backupActive && a.backupActiveTarget == name, "busy": a.backupActive, "last": record, "dailyAt": a.backupDailyAt, "timeZone": zone, "nextRunAt": next, "retention": a.retention}, nil
+	return map[string]any{"mode": "legacy", "hasLegacy": a.backup.Repository != "" || a.cloud.Repository != "", "target": name, "destination": client.Repository, "configured": client.Repository != "", "running": a.backupActive && a.backupActiveTarget == name, "busy": a.backupActive, "last": record, "dailyAt": a.backupDailyAt, "timeZone": zone, "nextRunAt": next, "retention": a.retention}, nil
 }
 
 func (a *LibraryAPI) startBackup(target ...string) error {
+	if a.unified != nil {
+		return a.startUnifiedBackup()
+	}
 	name := targetName(target)
 	client := a.backupClient(name)
 	a.backupMu.Lock()
@@ -290,6 +309,9 @@ type snapshotCache struct {
 }
 
 func (a *LibraryAPI) backupHistory(ctx context.Context, target, after string) (any, error) {
+	if a.unified != nil {
+		return a.unifiedHistory(ctx, after)
+	}
 	if !a.backupHistoryMu.TryLock() {
 		return nil, library.ErrConflict
 	}

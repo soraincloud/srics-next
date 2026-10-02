@@ -12,10 +12,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/soraincloud/srics-next/internal/atomicfile"
+	"github.com/soraincloud/srics-next/internal/backup"
 	"github.com/soraincloud/srics-next/internal/buildinfo"
 	"github.com/soraincloud/srics-next/internal/library"
 	"github.com/soraincloud/srics-next/internal/localtls"
@@ -168,6 +170,9 @@ func run(args []string) error {
 				return err
 			}
 			app.EnableCloudBackup(cloud)
+			if savedConfig.Unified != nil {
+				app.EnableUnifiedBackup(backup.Unified{Config: *savedConfig.Unified, Binary: tools.Restic, ProtectedDirectory: filepath.Dir(*config)})
+			}
 			app.StartMaintenance(savedConfig.TrashDays, savedConfig.Retention)
 			app.StartBackupSchedule(savedConfig.BackupDailyAt)
 		}

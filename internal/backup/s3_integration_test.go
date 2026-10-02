@@ -29,10 +29,13 @@ import (
 // A bounded, in-memory S3 protocol fixture. SigV4 validation is test-only;
 // production signing is provided by the SDK and by restic.
 type s3Fixture struct {
-	mu      sync.Mutex
-	objects map[string][]byte
-	bucket  bool
-	puts    int
+	mu        sync.Mutex
+	objects   map[string][]byte
+	bucket    bool
+	puts      int
+	corrupt   bool
+	denyRead  bool
+	denyWrite bool
 }
 
 func fixtureSignature(r *http.Request) bool {
@@ -138,6 +141,16 @@ func (f *s3Fixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case "PUT":
+		if f.denyWrite {
+			failure("AccessDenied", 403)
+			return
+		}
+		if r.Header.Get("If-None-Match") == "*" {
+			if _, ok := f.objects[key]; ok {
+				failure("PreconditionFailed", 412)
+				return
+			}
+		}
 		b, err := io.ReadAll(io.LimitReader(r.Body, 20<<20))
 		if err != nil {
 			failure("InternalError", 500)
@@ -147,10 +160,18 @@ func (f *s3Fixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.puts++
 		w.Header().Set("ETag", fmt.Sprintf("\"%x\"", md5.Sum(b)))
 	case "GET", "HEAD":
+		if f.denyRead {
+			failure("AccessDenied", 403)
+			return
+		}
 		b, ok := f.objects[key]
 		if !ok {
 			failure("NoSuchKey", 404)
 			return
+		}
+		if f.corrupt && len(b) > 0 {
+			b = append([]byte(nil), b...)
+			b[0] ^= 1
 		}
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("ETag", fmt.Sprintf("\"%x\"", md5.Sum(b)))

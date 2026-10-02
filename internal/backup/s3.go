@@ -68,7 +68,7 @@ func (s S3Config) lookup() string {
 }
 func (c Credentials) Validate() error {
 	if c.AccessKeyID == "" || c.SecretAccessKey == "" || len(c.AccessKeyID) > 256 || len(c.SecretAccessKey) > 4096 || len(c.SessionToken) > 16384 || strings.ContainsAny(c.AccessKeyID+c.SecretAccessKey+c.SessionToken, "\x00\r\n") {
-		return errors.New("云端凭据文件缺少有效的 accessKeyId / secretAccessKey")
+		return errors.New("请填写有效的 Access Key ID 与 Secret Access Key")
 	}
 	return nil
 }

@@ -69,6 +69,9 @@ func prepareUpdate(ctx context.Context, path string) (string, error) {
 		return "", err
 	}
 	tools := verification.ResolveTools()
+	if c.Unified != nil {
+		return prepareUnifiedUpdate(ctx, path, c, tools.Restic)
+	}
 	client, err := configuredBackup(c, tools.Restic)
 	target := "local"
 	if err != nil {

@@ -21,17 +21,18 @@ import (
 )
 
 type localConfig struct {
-	TrashDays          int              `json:"trashDays"`
-	Retention          backup.Retention `json:"retention"`
-	AutoStart          bool             `json:"autoStart"`
-	AutoRestart        bool             `json:"autoRestart"`
-	Data               string           `json:"data"`
-	Port               int              `json:"port"`
-	LANAddress         string           `json:"lanAddress"`
-	BackupRepository   string           `json:"backupRepository"`
-	BackupPasswordFile string           `json:"backupPasswordFile"`
-	BackupDailyAt      string           `json:"backupDailyAt"`
-	Cloud              cloudConfig      `json:"cloud"`
+	TrashDays          int                   `json:"trashDays"`
+	Retention          backup.Retention      `json:"retention"`
+	AutoStart          bool                  `json:"autoStart"`
+	AutoRestart        bool                  `json:"autoRestart"`
+	Data               string                `json:"data"`
+	Port               int                   `json:"port"`
+	LANAddress         string                `json:"lanAddress"`
+	BackupRepository   string                `json:"backupRepository"`
+	BackupPasswordFile string                `json:"backupPasswordFile"`
+	BackupDailyAt      string                `json:"backupDailyAt"`
+	Unified            *backup.UnifiedConfig `json:"unified,omitempty"`
+	Cloud              cloudConfig           `json:"cloud"`
 }
 type configureRequest struct {
 	Config               localConfig `json:"config"`
@@ -97,9 +98,15 @@ func (c localConfig) validate() error {
 		}
 	}
 	if c.BackupDailyAt != "" {
-		if _, err := time.Parse("15:04", c.BackupDailyAt); err != nil || len(c.BackupDailyAt) != 5 || (c.BackupRepository == "" && !c.Cloud.Enabled) {
+		if _, err := time.Parse("15:04", c.BackupDailyAt); err != nil || len(c.BackupDailyAt) != 5 || (c.BackupRepository == "" && !c.Cloud.Enabled && c.Unified == nil) {
 			return errors.New("自动备份需先配置备份目录，时间使用 HH:mm 格式")
 		}
+	}
+	if c.Unified != nil {
+		if err := c.Unified.Validate(c.Data); err != nil {
+			return err
+		}
+		return nil
 	}
 	if err := validateCloud(c); err != nil {
 		return err
@@ -145,6 +152,9 @@ func resolvedPath(path string) (string, error) {
 }
 func configuredBackup(c localConfig, binary string) (backup.Client, error) {
 	client := backup.Client{Binary: binary, Repository: c.BackupRepository}
+	if c.Unified != nil {
+		return backup.Client{}, nil
+	}
 	if c.BackupRepository == "" && c.BackupPasswordFile == "" {
 		return client, nil
 	}
@@ -296,12 +306,22 @@ func applyConfig(path string, req configureRequest) error {
 			return err
 		}
 	}
+	recoveryValues := map[string][]byte{}
+	if len(wrapped) > 0 {
+		recoveryValues, err = l.VaultRecoverySettings(wrapped, req.VaultPassword)
+		if err != nil {
+			return err
+		}
+	}
 	// Publish paths before updating credentials; a failed configuration write
 	// must never change the existing login password.
 	if err := writeConfig(path, c); err != nil {
 		return err
 	}
 	values := map[string][]byte{}
+	for k, v := range recoveryValues {
+		values[k] = v
+	}
 	if len(wrapped) > 0 {
 		values["vault-key"] = wrapped
 	}

@@ -205,16 +205,6 @@ onUnmounted(() => {
       </p>
     </div>
   </section>
-  <div v-if="page !== 'trash'" class="collection-toolbar">
-    <SegmentedControl role="group" aria-label="备份目标">
-      <button :aria-pressed="target === 'local'" @click="target = 'local'">
-        本地 / 独立硬盘
-      </button>
-      <button :aria-pressed="target === 'cloud'" @click="target = 'cloud'">
-        云端
-      </button>
-    </SegmentedControl>
-  </div>
   <p v-if="error" class="notice warning" role="alert">{{ error }}</p>
   <template v-if="page === 'trash'">
     <p v-if="storage" class="subtle-copy">
@@ -274,7 +264,49 @@ onUnmounted(() => {
       }}历史备份中的副本独立保留。
     </p>
   </template>
+  <template v-else-if="backup?.mode === 'unified'">
+    <section class="backup-card panel">
+      <span class="verification-emblem"><Icon name="shield" /></span>
+      <div>
+        <h2>{{ backup.running ? "正在备份" : backup.last?.status === "failed" ? "备份未完成" : backup.last?.savedAt ? "备份已完成" : "准备好备份" }}</h2>
+        <p>{{ backup.running ? "可以关闭页面，任务会继续。" : "完整加密备份包含全部资料与数据库，私密原文件也在其中。" }}</p>
+      </div>
+      <button class="button primary" :disabled="busy || backup.busy || !backup.configured" @click="start"><Icon name="shield" />{{ backup.running ? "处理中…" : "立即备份" }}</button>
+    </section>
+    <p v-if="backup.last?.cleanupError" class="notice warning">{{ backup.last.cleanupError }}</p>
+    <p v-if="backup.last?.error" class="notice warning" role="alert">{{ backup.last.error }}</p>
+    <dl class="backup-details panel">
+      <dt>保存位置</dt><dd><div v-for="place in backup.destinations" :key="place">{{ place }}</div></dd>
+      <dt>自动备份</dt><dd>{{ backup.dailyAt ? `每天 ${backup.dailyAt}（${backup.timeZone}）` : "未开启" }}</dd>
+      <template v-if="backup.nextRunAt"><dt>{{ backup.last?.status === 'failed' ? '下次重试' : '下次执行' }}</dt><dd>{{ date(backup.nextRunAt) }}</dd></template>
+      <dt>恢复 JSON</dt><dd>{{ backup.recoveryVerified ? "已验证 · 请单独离线保管原文件" : "请在本机 App 中完成验证" }}</dd>
+      <template v-if="backup.last?.savedAt"><dt>最近成功</dt><dd>{{ date(backup.last.savedAt) }} · 已完整读取校验</dd></template>
+      <template v-if="backup.last?.file"><dt>备份文件</dt><dd>{{ backup.last.file }}<span v-if="backup.last.bytes"> · {{ fileSize(backup.last.bytes) }}</span></dd></template>
+    </dl>
+    <section class="backup-history panel">
+      <div class="backup-history-heading"><h2>历史备份<span v-if="historyLoaded">{{ historyTotal }}</span></h2><button class="button small secondary" :disabled="historyBusy || backup.busy" @click="loadHistory()">{{ historyBusy ? "读取中…" : historyLoaded ? "刷新" : "查看历史" }}</button></div>
+      <p v-if="historyError" class="notice warning" role="alert">{{ historyError }}</p>
+      <ol v-if="historyLoaded && history.length" class="backup-snapshots"><li v-for="entry in history" :key="entry.id"><div class="snapshot-summary"><time>{{ date(entry.time) }}</time><span v-if="entry.bytes != null">{{ fileSize(entry.bytes) }}</span></div><code>{{ entry.id }}</code></li></ol>
+      <EmptyState v-else-if="historyLoaded && !historyBusy && !historyError" compact icon="clock" title="暂无备份文件" description="已保存的备份文件会显示在这里。" />
+      <button v-if="historyNext" class="button small secondary" :disabled="historyBusy" @click="loadHistory(true)">加载更多</button>
+    </section>
+    <p class="page-footnote">自动与手动备份使用同一种 .sricsbackup 文件，保留全部日期版本。恢复时在 App 中选择备份文件和恢复 JSON。</p>
+  </template>
   <template v-else-if="backup">
+    <section class="backup-setup panel"><h2>设置统一备份</h2><p>在本机 App → 备份中，保存并验证恢复 JSON，再选择保存位置。以后只需点击立即备份或开启自动备份。</p></section>
+    <details v-if="backup.hasLegacy" class="backup-history panel"><summary>旧版备份（兼容）</summary>
+  <div v-if="page !== 'trash' && backup?.mode !== 'unified' && backup?.hasLegacy" class="collection-toolbar">
+    <SegmentedControl role="group" aria-label="备份目标">
+      <button :aria-pressed="target === 'local'" @click="target = 'local'">
+        本地 / 独立硬盘
+      </button>
+      <button :aria-pressed="target === 'cloud'" @click="target = 'cloud'">
+        云端
+      </button>
+    </SegmentedControl>
+  </div>
+
+
     <section class="backup-card panel">
       <span class="verification-emblem"><Icon name="shield" /></span>
       <div>
@@ -468,18 +500,9 @@ onUnmounted(() => {
     <p v-if="backup.last?.error" class="notice warning">
       {{ backup.last.error }}
     </p>
-    <section v-if="!backup.configured" class="backup-setup panel">
-      <h2>备份配置</h2>
-      <p>
-        {{
-          target === "cloud"
-            ? "填写 Endpoint、区域、存储桶与专用前缀，选择凭据和备份口令文件；检查连接后保存并启动服务。"
-            : "选择备份目录和口令文件，保存并启动服务。请使用独立硬盘存放正式备份。"
-        }}
-      </p>
-    </section>
     <p class="page-footnote">
       只有完整快照和数据检查都成功，才会记录本次成功状态。上传成功不等于已备份。
     </p>
+    </details>
   </template>
 </template>

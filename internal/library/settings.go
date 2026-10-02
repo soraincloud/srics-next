@@ -35,12 +35,22 @@ func (l *Library) recoveryManifest(dest string) error {
 			active = append(active, string(id))
 		}
 	}
+	ids := []string{}
+	unified, err := l.RecoveryRecord()
+	if err != nil {
+		return err
+	}
+	if unified != nil {
+		if (len(wrapped) > 0) != (len(unified.WrappedVault) > 0) {
+			return invalid
+		}
+		ids = append(ids, unified.ID)
+	}
 	rows, err := l.db.Query("SELECT key,value FROM settings WHERE key LIKE 'recovery-key-%' ORDER BY key")
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
-	ids := []string{}
 	records := map[string]bool{}
 	for rows.Next() {
 		var name string

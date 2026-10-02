@@ -28,7 +28,7 @@ struct RecoveryKeyRequest: Encodable, Sendable { let target: String; let file: S
     func cancel() { process?.cancel() }
     func generate() {
         let panel = NSSavePanel()
-        panel.title = "导出恢复密钥"; panel.nameFieldStringValue = "SRICS-恢复密钥-\(target)-\(UUID().uuidString.prefix(8)).json"
+        panel.title = "导出恢复密钥"; panel.nameFieldStringValue = target == "unified" ? "SRICS-资料库恢复钥匙.json" : "SRICS-恢复密钥-\(target)-\(UUID().uuidString.prefix(8)).json"
         panel.message = "另存到安全位置，随后重新选择文件验证。持有此文件和备份即可读取资料。"
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -36,23 +36,24 @@ struct RecoveryKeyRequest: Encodable, Sendable { let target: String; let file: S
     }
     func confirm() {
         let panel = NSOpenPanel(); panel.canChooseFiles = true; panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
-        panel.prompt = "验证并备份"; panel.message = "重新选择已保存的恢复密钥文件。会验证密钥、创建新备份并完整读取校验。"
+        panel.prompt = "验证"; panel.message = target == "unified" ? "重新选择已保存的恢复 JSON，验证它能解锁此资料库的私密原文件。" : "重新选择已保存的恢复密钥文件。会验证密钥、创建新备份并完整读取校验。"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         step = 1
         perform("recovery-key-confirm", file: url.path)
     }
     func perform(_ action: String, file: String = "") {
         guard !busy else { return }
+        let actualAction = target == "unified" ? action.replacingOccurrences(of: "recovery-key-", with: "unified-key-") : action
         let request = RecoveryKeyRequest(target: target, file: file, vaultPassword: action == "recovery-key-generate" ? password : "")
         guard let payload = try? JSONEncoder().encode(request) else { return }
         let command = RecoveryProcess(); process = command; busy = true; failed = false; AppDelegate.recoveryBusy = true
-        message = action == "recovery-key-confirm" ? "正在验证密钥并创建备份，随后会完整读取校验。请保持窗口打开…" : action == "recovery-key-generate" ? "正在校验当前口令并导出恢复文件…" : "正在读取状态…"
+        message = action == "recovery-key-confirm" ? (target == "unified" ? "正在读取 JSON 并校验私密原文件的恢复能力…" : "正在验证密钥并创建备份，随后会完整读取校验…") : action == "recovery-key-generate" ? "正在校验当前口令并导出恢复文件…" : "正在读取状态…"
         Task {
             do {
-                let response = try await Task.detached { try command.run(action, payload: payload, as: RecoveryKeyResponse.self) }.value
+                let response = try await Task.detached { try command.run(actualAction, payload: payload, as: RecoveryKeyResponse.self) }.value
                 info = response.info
                 if action == "recovery-key-generate" { password = ""; step = 1; message = "恢复 JSON 已保存。请重新选择它，确认文件可读并启用恢复能力。" }
-                else if action == "recovery-key-confirm" { step = 2; message = "恢复密钥和新备份均已验证。请离线保管恢复文件，之后可重新启动服务。" }
+                else if action == "recovery-key-confirm" { step = 2; message = target == "unified" ? "恢复 JSON 已验证。下一步选择保存位置，创建第一份备份。" : "恢复密钥和新备份均已验证。请离线保管恢复文件。" }
                 else { step = info?.state == "verified" ? (requiresConfirmation ? 1 : 2) : info?.state == "exported" ? 1 : 0; message = "" }
             } catch { failed = true; message = error.localizedDescription }
             busy = false; process = nil; AppDelegate.recoveryBusy = false
@@ -93,7 +94,7 @@ struct RecoveryKeyView: View {
                                 PasswordField(title: "验证现有保险库口令", text: $model.password, placeholder: "用于让应急钥匙也能恢复私密资料")
                                 Text("只在这一步使用：先解锁现有私密密钥，再建立应急恢复方式。不会修改口令，也不会把口令写入 JSON。").font(.caption).foregroundStyle(.secondary)
                             } else {
-                                Text("当前未启用私密区。这份 JSON 用于恢复普通资料；以后启用私密区，需重新生成并验证。")
+                                Text(model.target == "unified" ? "以后启用私密区时会自动纳入恢复保护，不需要更换 JSON。" : "当前未启用私密区；以后启用私密区需重新生成并验证旧版 JSON。")
                             }
                             Text("程序随机生成恢复钥匙，请另存到这台 Mac 以外的安全位置。不要放入资料目录或备份仓库。").font(.callout)
                             Button("生成并保存 JSON…") { model.generate() }.buttonStyle(RecoveryActionStyle())
@@ -101,19 +102,19 @@ struct RecoveryKeyView: View {
                         }
                     } else if model.step == 1 {
                         GlobalCard("2 · 确认文件可用并启用", icon: "checkmark.shield") {
-                            Text("重新选择刚保存的恢复 JSON。程序会验证它能解锁资料，创建一份支持这把钥匙的备份，并完整读取校验。")
+                            Text(model.target == "unified" ? "重新选择刚保存的 JSON，确认文件能读取，并校验私密原文件的恢复能力。验证后再选择备份位置。" : "重新选择刚保存的 JSON，验证解锁能力并创建备份。")
                             Text("只有完成这一步，才能依靠这个文件恢复。中途失败可使用同一 JSON 重试，无需重新生成。").font(.caption).foregroundStyle(.secondary)
                             Button("选择已保存的 JSON，验证并启用…") { model.confirm() }.buttonStyle(RecoveryActionStyle())
                             Button("未保留导出的文件，重新生成") { model.step = 0; model.message = "" }
                         }
                     } else {
                         GlobalCard("恢复钥匙已验证", icon: "checkmark.shield") {
-                            Text(model.info?.vaultPresent == true ? "可恢复普通资料与私密资料。" : "可恢复普通资料；尚未覆盖私密区。")
+                            Text(model.target == "unified" ? "适用于此资料库今后创建的全部统一备份；普通与私密资料都在保护范围内。" : model.info?.vaultPresent == true ? "可恢复普通资料与私密资料。" : "可恢复普通资料；尚未覆盖私密区。")
                             if let id = model.info?.id { Text("钥匙编号：\(id.prefix(16))").font(.caption.monospaced()).textSelection(.enabled) }
                             Text("独立保管此 JSON 和完整备份。恢复时无需原登录密码、保险库口令或日常备份钥匙；云端账号访问方式仍需另存。").font(.callout)
-                            Text("只适用于标记支持这把钥匙的恢复点。更换仓库，或之后首次启用私密区，需要重新设置。").font(.caption).foregroundStyle(.secondary)
+                            Text(model.target == "unified" ? "修改密码、更换保存位置或首次启用私密区，无需更换这份 JSON。旧版备份仍使用旧 JSON。" : "只适用于记录此钥匙的旧版恢复点。").font(.caption).foregroundStyle(.secondary)
                             Button("重新验证已有 JSON…") { model.confirm() }
-                            Button("生成另一份恢复钥匙…") { model.password = ""; model.step = 0; model.message = "" }
+                            if model.target != "unified" { Button("生成另一份恢复钥匙…") { model.password = ""; model.step = 0; model.message = "" } }
                         }
                     }
                 }

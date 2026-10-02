@@ -300,6 +300,8 @@ func manager(ctx context.Context, args []string) error {
 		}
 		status.UpdateBackup = dir
 		return json.NewEncoder(os.Stdout).Encode(status)
+	case "unified-key-status", "unified-key-generate", "unified-key-confirm", "unified-backup-configure", "unified-backup-run":
+		return unifiedManager(ctx, args[0], path, verification.ResolveTools().Restic, os.Stdin)
 	case "backup-package-export":
 		return backupPackageManager(ctx, path, verification.ResolveTools().Restic, os.Stdin)
 	case "backup-setup", "backup-setup-check":

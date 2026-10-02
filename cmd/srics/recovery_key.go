@@ -9,7 +9,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"filippo.io/age"
 	"fmt"
+	"github.com/soraincloud/srics-next/internal/recoverykey"
 	"io"
 	"os"
 	"path/filepath"
@@ -29,6 +31,7 @@ type recoveryKeyFile struct {
 	Format       string    `json:"format"`
 	Version      int       `json:"version"`
 	ID           string    `json:"id"`
+	Recipient    string    `json:"recipient,omitempty"`
 	RepositoryID string    `json:"repositoryID"`
 	LibraryID    string    `json:"libraryID"`
 	CreatedAt    time.Time `json:"createdAt"`
@@ -63,7 +66,25 @@ type recoveryKeyResponse struct {
 func digest(data []byte) string { return fmt.Sprintf("%x", sha256.Sum256(data)) }
 func validDigest(s string) bool { b, err := hex.DecodeString(s); return err == nil && len(b) == 32 }
 func readRecoveryKey(path string) (*recoveryKeyFile, error) {
-	data, err := privateFile(path, 16384)
+	// Offline copies on USB or synced folders may not preserve POSIX modes.
+	// Export still uses 0600; v1 keeps its original strict permission rule.
+	if !filepath.IsAbs(path) {
+		return nil, errors.New("请选择恢复 JSON 的绝对路径")
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, errors.New("无法读取恢复 JSON")
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, errors.New("恢复 JSON 需为普通文件")
+	}
+	data, err := io.ReadAll(io.LimitReader(f, 16385))
+	if len(data) > 16384 {
+		clear(data)
+		return nil, errors.New("恢复 JSON 文件过大")
+	}
 	if err != nil {
 		return nil, errors.New("无法读取恢复文件；请选择仅本人可读的文件（权限 600）")
 	}
@@ -71,8 +92,18 @@ func readRecoveryKey(path string) (*recoveryKeyFile, error) {
 	var key recoveryKeyFile
 	d := json.NewDecoder(bytes.NewReader(data))
 	d.DisallowUnknownFields()
-	if d.Decode(&key) != nil || d.Decode(&struct{}{}) != io.EOF || key.Format != "srics-recovery-key" || key.Version != 1 || key.CreatedAt.IsZero() || !validDigest(key.RepositoryID) || !library.IDPattern.MatchString(key.LibraryID) {
+	if d.Decode(&key) != nil || d.Decode(&struct{}{}) != io.EOF || key.Format != "srics-recovery-key" || (key.Version != 1 && key.Version != 2) || key.CreatedAt.IsZero() || (key.Version == 1 && !validDigest(key.RepositoryID)) || !library.IDPattern.MatchString(key.LibraryID) {
 		return nil, errors.New("恢复文件格式无效或版本不支持")
+	}
+	if key.Version == 2 {
+		id, e := age.ParseX25519Identity(key.Secret)
+		if e != nil || key.RepositoryID != "" || id.Recipient().String() != key.Recipient || key.ID != recoverykey.Fingerprint(key.Recipient) {
+			return nil, errors.New("恢复密钥校验失败")
+		}
+		return &key, nil
+	}
+	if info.Mode().Perm()&0077 != 0 {
+		return nil, errors.New("旧版恢复文件需仅本人可读（权限 600）")
 	}
 	secret, err := base64.RawURLEncoding.DecodeString(key.Secret)
 	defer clear(secret)
@@ -108,6 +139,15 @@ func (s recoverySource) recoveryKeyClient(ctx context.Context, binary string) (b
 		return client, err
 	}
 	client.Binary, client.Password = binary, key.Secret
+	repositoryID := key.RepositoryID
+	if key.Version == 2 {
+		envelope, e := recoverykey.OpenEnvelope(key.Secret, s.RecoveryEnvelope, key.LibraryID)
+		if e != nil {
+			return client, e
+		}
+		client.Password = envelope.Password
+		repositoryID = envelope.RepositoryID
+	}
 	if s.Target == "local" {
 		if !filepath.IsAbs(s.Repository) {
 			return client, errors.New("请选择备份目录的绝对路径")
@@ -141,7 +181,7 @@ func (s recoverySource) recoveryKeyClient(ctx context.Context, binary string) (b
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	id, err := client.RepositoryID(ctx)
-	if err != nil || id != key.RepositoryID {
+	if err != nil || id != repositoryID {
 		return client, errors.New("恢复密钥无法解锁此仓库，请确认已启用、仓库完整且连接正确")
 	}
 	return client, nil
@@ -371,6 +411,35 @@ func recoveryKeyAccess(ctx context.Context, l *library.Library, file string) (*v
 	key, err := readRecoveryKey(file)
 	if err != nil {
 		return nil, err
+	}
+	if key.Version == 2 {
+		record, e := l.RecoveryRecord()
+		if e != nil {
+			return nil, e
+		}
+		if record == nil || record.ID != key.ID || record.LibraryID != key.LibraryID {
+			return nil, errors.New("恢复 JSON 与资料库不匹配")
+		}
+		wrapped, e := l.Setting("vault-key")
+		if e != nil {
+			return nil, e
+		}
+		if (len(wrapped) > 0) != (len(record.WrappedVault) > 0) {
+			return nil, errors.New("恢复密钥未覆盖私密资料")
+		}
+		if len(wrapped) == 0 {
+			return nil, nil
+		}
+		plain, e := recoverykey.Open(key.Secret, record.WrappedVault)
+		if e != nil {
+			return nil, errors.New("恢复 JSON 无法解锁私密资料")
+		}
+		defer clear(plain)
+		id, e := age.ParseX25519Identity(string(plain))
+		if e != nil {
+			return nil, e
+		}
+		return vault.NewAccess(ctx, id, 24*time.Hour), nil
 	}
 	record, err := recoveryKeyRecordFor(l, key)
 	if err != nil {

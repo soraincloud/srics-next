@@ -37,6 +37,9 @@ func (s *Server) StartMaintenance(days int, p backup.Retention) {
 	}()
 }
 func (a *LibraryAPI) retentionPreview(ctx context.Context, target string) (backup.RetentionPlan, error) {
+	if a.unified != nil {
+		return backup.RetentionPlan{}, errors.New("统一备份保留全部文件，请在保存位置整理日期版本")
+	}
 	a.backupMu.Lock()
 	defer a.backupMu.Unlock()
 	if a.backupActive {
@@ -50,6 +53,9 @@ func (a *LibraryAPI) retentionPreview(ctx context.Context, target string) (backu
 	return a.backupClient(target).PlanRetention(ctx, a.retention)
 }
 func (a *LibraryAPI) cleanBackup(target, token string) error {
+	if a.unified != nil {
+		return errors.New("统一备份保留全部日期文件")
+	}
 	a.backupMu.Lock()
 	defer a.backupMu.Unlock()
 	if a.backupActive {

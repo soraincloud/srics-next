@@ -24,12 +24,13 @@ import (
 const recoveryReceipt = ".srics-recovery.json"
 
 type recoverySource struct {
-	PackageFile     string      `json:"packageFile"`
-	RecoveryKeyFile string      `json:"recoveryKeyFile"`
-	Target          string      `json:"target"`
-	Repository      string      `json:"repository"`
-	PasswordFile    string      `json:"passwordFile"`
-	Cloud           cloudConfig `json:"cloud"`
+	RecoveryEnvelope []byte      `json:"recoveryEnvelope,omitempty"`
+	PackageFile      string      `json:"packageFile"`
+	RecoveryKeyFile  string      `json:"recoveryKeyFile"`
+	Target           string      `json:"target"`
+	Repository       string      `json:"repository"`
+	PasswordFile     string      `json:"passwordFile"`
+	Cloud            cloudConfig `json:"cloud"`
 }
 type recoveryRequest struct {
 	NewPassword      string         `json:"newPassword"`
@@ -51,14 +52,15 @@ type recoveryResult struct {
 	VaultPresent bool      `json:"vaultPresent"`
 }
 type recoveryResponse struct {
-	Repository     string            `json:"repository,omitempty"`
-	RecoveryKeyID  string            `json:"recoveryKeyID,omitempty"`
-	PasswordsReset bool              `json:"passwordsReset"`
-	Items          []recoveryItem    `json:"items,omitempty"`
-	Exported       string            `json:"exported,omitempty"`
-	Snapshots      []backup.Snapshot `json:"snapshots,omitempty"`
-	Result         *recoveryResult   `json:"result,omitempty"`
-	Activated      bool              `json:"activated"`
+	RecoveryEnvelope []byte            `json:"recoveryEnvelope,omitempty"`
+	Repository       string            `json:"repository,omitempty"`
+	RecoveryKeyID    string            `json:"recoveryKeyID,omitempty"`
+	PasswordsReset   bool              `json:"passwordsReset"`
+	Items            []recoveryItem    `json:"items,omitempty"`
+	Exported         string            `json:"exported,omitempty"`
+	Snapshots        []backup.Snapshot `json:"snapshots,omitempty"`
+	Result           *recoveryResult   `json:"result,omitempty"`
+	Activated        bool              `json:"activated"`
 }
 
 func (s recoverySource) client(ctx context.Context, binary string) (backup.Client, error) {
@@ -214,6 +216,13 @@ func activateRecovery(ctx context.Context, configPath, directory string) (*recov
 		return nil, errors.New("恢复的资料库没有登录密码，未启用")
 	}
 	c.Data = dest
+	if c.Unified != nil {
+		c.Unified = nil
+		c.BackupRepository = ""
+		c.BackupPasswordFile = ""
+		c.Cloud.Enabled = false
+		c.BackupDailyAt = ""
+	}
 	if err = c.validate(); err != nil {
 		return nil, err
 	}

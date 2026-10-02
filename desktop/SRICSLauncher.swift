@@ -16,6 +16,13 @@ struct CloudConfig: Codable, Equatable, Sendable {
     var passwordFile = ""
 }
 struct RetentionConfig: Codable, Equatable, Sendable { var enabled = false; var daily = 0; var monthly = 0 }
+struct UnifiedConfig: Codable, Equatable, Sendable {
+ var repository = ""
+ var passwordFile = ""
+ var directory = ""
+ var cloud: S3Connection? = nil
+ var credentialsFile: String? = nil
+}
 struct LocalConfig: Codable, Equatable, Sendable {
     var autoStart = false
     var autoRestart = false
@@ -27,6 +34,7 @@ struct LocalConfig: Codable, Equatable, Sendable {
     var backupRepository = ""
     var backupPasswordFile = ""
     var backupDailyAt = ""
+    var unified: UnifiedConfig? = nil
     var cloud = CloudConfig()
 }
 struct ReleaseInfo: Codable, Sendable {
@@ -225,7 +233,8 @@ func runManager(_ action: String, payload: Data? = nil) throws -> ServiceStatus 
 struct LauncherView: View {
     @StateObject private var model = Launcher()
     @State private var showRecovery = false
-    @State private var showRecoveryKey = false
+    @State private var showUnifiedBackup = false
+ @State private var showRecoveryKey = false
     @State private var showBackupPackage = false
     @State private var backupSetupTarget: BackupSetupTarget?
     @State private var showMigration = false
@@ -306,7 +315,7 @@ struct LauncherView: View {
                     Text(model.changed ? "请先保存当前更改，再迁移资料目录。" : "将完整资料库复制到新位置，校验后切换。原目录保留。").font(.caption).foregroundStyle(.secondary)
                     Divider()
                 }
-                Text("换到新 Mac：旧机停止写入后完成最终备份。在新机安装 App，用备份仓库与恢复 JSON 恢复；直接连接云端时，还需云端访问凭据。").font(.callout)
+                Text("换到新 Mac：旧机停止写入后完成最终备份。在新机安装 App，用一份完整备份文件与恢复 JSON 恢复。云端文件先下载完整。").font(.callout)
                 Button("从备份迁入这台 Mac…") { showRecovery = true }.disabled(model.busy || (model.saved && model.changed))
                 Text("资料和密码随备份恢复。新机需重新设置备份路径、云端凭据和局域网 HTTPS；确认可用前保留旧机资料。").font(.caption).foregroundStyle(.secondary)
             }
@@ -335,65 +344,47 @@ struct LauncherView: View {
             }.disabled(model.busy || model.running)
         }
         if pane == .backup {
-            GlobalCard("设置备份", icon: "externaldrive.badge.timemachine") {
-                Text("选择位置 → 创建并校验备份 → 保存应急恢复 JSON。")
-                Text("新备份的加密钥匙由程序自动生成并保存在本机，你不需要另设密码或准备口令文件。").font(.caption).foregroundStyle(.secondary)
+            GlobalCard("加密备份", icon: "externaldrive.badge.timemachine") {
+                Text("所有备份都保存为 .sricsbackup 文件。恢复时，只需一份完整备份和资料库的恢复 JSON。")
+                if let unified = model.config.unified {
+                    if !unified.directory.isEmpty { LabeledContent("保存位置", value: unified.directory).textSelection(.enabled) }
+                    if let cloud = unified.cloud { LabeledContent("云端位置", value: "\(cloud.bucket) / \(cloud.prefix)") }
+                } else { Text("首次设置：保存恢复 JSON → 验证文件 → 选择位置 → 创建第一份备份。").font(.callout).foregroundStyle(.secondary) }
                 HStack {
-                    Button(model.config.cloud.enabled ? "管理云端备份…" : "设置云端备份…") { backupSetupTarget = .cloud }
-                    Button(model.config.backupRepository.isEmpty ? "设置独立硬盘备份…" : "管理独立硬盘备份…") { backupSetupTarget = .local }
+                    Button(model.config.unified == nil ? "开始设置…" : "管理备份…") { showUnifiedBackup = true }
+                    if model.config.unified != nil { Button("另存一份备份…") { showBackupPackage = true } }
                 }.disabled(!model.saved || model.changed || model.running || model.busy)
-                if model.running { Text("请先停止服务，再设置备份。").font(.caption).foregroundStyle(.secondary) }
+                if model.running { Text("网页中可直接点击立即备份。修改位置或另存文件前，请先停止服务。").font(.caption).foregroundStyle(.secondary) }
                 else if !model.saved || model.changed { Text("请先保存当前资料库配置。").font(.caption).foregroundStyle(.secondary) }
-                if !model.config.cloud.passwordFile.isEmpty {
-                    Toggle("启用云端备份", isOn: Binding(get: { model.config.cloud.enabled }, set: { enabled in
-                        model.config.cloud.enabled = enabled
-                        if !enabled && model.config.backupRepository.isEmpty { model.config.backupDailyAt = "" }
-                    })).disabled(model.running || model.busy)
-                    LabeledContent("云端", value: "\(model.config.cloud.connection.bucket) / \(model.config.cloud.connection.prefix)")
-                }
-                if !model.config.backupRepository.isEmpty {
-                    LabeledContent("独立硬盘", value: model.config.backupRepository)
-                }
+                Text("登录密码用于网页，保险库口令用于私密资料；恢复 JSON 单独离线保管，只用于灾难恢复。").font(.caption).foregroundStyle(.secondary)
             }
-            GlobalCard("应急恢复 JSON", icon: "key.horizontal") {
-                Text("机器与密码全部丢失时，用完整备份和匹配的 JSON 取回普通与私密资料。请将 JSON 另存到这台 Mac 以外。")
-                Button("查看或继续设置恢复钥匙…") { showRecoveryKey = true }.disabled(!model.saved || model.changed || model.running || model.busy)
-                Text("它只用于灾难恢复，不用于日常登录或修改保险库口令。").font(.caption).foregroundStyle(.secondary)
-            }
-        }
-        if pane == .backup {
-            GlobalCard("手动备份包", icon: "shippingbox") {
-                Text("导出一个完整加密文件，手动上传到 OneDrive 等网盘。恢复 JSON 单独保管。")
-                Button("导出完整加密备份包…") { showBackupPackage = true }
-                    .disabled(!model.saved || model.changed || model.running || model.busy || model.config.backupRepository.isEmpty)
-                if model.config.backupRepository.isEmpty {
-                    Text("先用上方本地备份向导选择一个目录，并保存、验证该位置的恢复 JSON。不需要云端 S3。").font(.caption).foregroundStyle(.secondary)
-                } else if model.running {
-                    Text("请先停止服务，再导出备份包。").font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            GlobalCard("备份计划", icon: "clock") {
+            GlobalCard("自动备份", icon: "clock") {
                 Toggle("每天自动备份", isOn: Binding(get: { !model.config.backupDailyAt.isEmpty }, set: { model.config.backupDailyAt = $0 ? "03:00" : "" }))
-                    .disabled(model.config.backupRepository.isEmpty && !model.config.cloud.enabled)
-                if model.config.backupRepository.isEmpty && !model.config.cloud.enabled { Text("先完成上方的备份设置向导，再开启自动备份。").font(.caption).foregroundStyle(.secondary) }
+                    .disabled(model.config.unified == nil)
                 if !model.config.backupDailyAt.isEmpty {
-                    LabeledContent("每天执行时间") {
-                        TextField("03:00", text: $model.config.backupDailyAt).frame(width: 95).textFieldStyle(GlobalTextFieldStyle()).labelsHidden()
-                    }
-                    Text("使用本机时区，依次备份本地和云端。漏跑补做，失败每小时重试。").font(.caption).foregroundStyle(.secondary)
+                    LabeledContent("每天执行时间") { TextField("03:00", text: $model.config.backupDailyAt).frame(width: 95).labelsHidden() }
+                    Text("使用本机时区。漏跑会补做，失败每小时重试。每天产出同一种备份文件，无需输入密码或选择 JSON。").font(.caption).foregroundStyle(.secondary)
                 }
+                Text("新备份会完整读取校验后才显示成功。保留所有日期版本；完整备份需要额外空间。").font(.caption).foregroundStyle(.secondary)
             }.disabled(model.busy || model.running)
+            if model.config.unified == nil && (!model.config.backupRepository.isEmpty || model.config.cloud.enabled) {
+                DisclosureGroup("旧版备份设置") {
+                    Text("已有仓库和旧 JSON 会保留。完成新设置后，自动备份改用统一格式；旧备份从恢复窗口的兼容入口读取。").font(.caption).foregroundStyle(.secondary)
+                    HStack { Button("旧本地仓库…") { backupSetupTarget = .local }; Button("旧云端仓库…") { backupSetupTarget = .cloud }; Button("旧恢复 JSON…") { showRecoveryKey = true } }
+                }.disabled(model.running || model.busy || model.changed)
+            }
         }
         if pane == .storage {
             GlobalCard("空间管理", icon: "internaldrive") {
                 Toggle("自动清理回收站", isOn: Binding(get: { model.config.trashDays > 0 }, set: { model.config.trashDays = $0 ? 30 : 0 }))
                 if model.config.trashDays > 0 { Stepper("回收站保留 \(model.config.trashDays) 天", value: $model.config.trashDays, in: 1...3650); Text("到期后永久删除。私密资料在解锁后清理，历史备份独立保留。").font(.caption).foregroundStyle(.secondary) }
-                Toggle("清理过期历史备份", isOn: Binding(get: { model.config.retention.enabled }, set: { model.config.retention.enabled = $0; if $0 && model.config.retention.daily == 0 { model.config.retention.daily = 30; model.config.retention.monthly = 12 } }))
+                if model.config.unified == nil { Toggle("清理过期历史备份", isOn: Binding(get: { model.config.retention.enabled }, set: { model.config.retention.enabled = $0; if $0 && model.config.retention.daily == 0 { model.config.retention.daily = 30; model.config.retention.monthly = 12 } }))
                 if model.config.retention.enabled {
                     Stepper("每日版本：\(model.config.retention.daily)", value: $model.config.retention.daily, in: 1...3650)
                     Stepper("月度版本：\(model.config.retention.monthly)", value: $model.config.retention.monthly, in: 0...120)
                     Text("按 UTC 日/月保留最新版本；新备份通过校验后永久删除多余快照。至少保留最新一份。网页可预览清理内容。").font(.caption).foregroundStyle(.secondary)
                 }
+                } else { Text("备份文件保留全部日期版本。确认有可用备份后，可在保存位置手动整理旧文件。").font(.caption).foregroundStyle(.secondary) }
             }.disabled(model.busy || model.running)
         }
         if pane == .updates {
@@ -406,7 +397,7 @@ struct LauncherView: View {
                 }
                 Button("停止服务并准备更新") { model.perform("prepare-update") }.disabled(model.busy || !model.saved)
                 if model.busy && AppDelegate.recoveryBusy { Button("取消更新准备") { model.cancelUpdate() } }
-                Text("先完成加密备份并保留旧程序，再退出、替换 .app 并重新启动；失败时不替换程序。需要已配置的可读备份仓库。").font(.caption).foregroundStyle(.secondary)
+                Text("先完成加密备份并保留旧程序，再退出、替换 .app 并重新启动；失败时不替换程序。需要已完成的备份设置。").font(.caption).foregroundStyle(.secondary)
             }
         }
     }
@@ -498,7 +489,8 @@ struct LauncherView: View {
         .task { model.refresh() }
         .sheet(isPresented: $showRecovery) { RecoveryView(config: model.config) { model.status = nil; model.refresh() } }
         .sheet(isPresented: $showMigration) { MigrationView(model: model) }
-        .sheet(isPresented: $showBackupPackage) { BackupPackageView() }
+        .sheet(isPresented: $showBackupPackage) { UnifiedBackupView(config: model.config, vaultConfigured: model.status?.vaultSet == true, exportOnly: true) { model.status = nil; model.refresh() } }
+        .sheet(isPresented: $showUnifiedBackup) { UnifiedBackupView(config: model.config, vaultConfigured: model.status?.vaultSet == true) { model.status = nil; model.refresh() } }
         .sheet(isPresented: $showRecoveryKey) { RecoveryKeyView(config: model.config, vaultConfigured: model.status?.vaultSet == true) }
         .sheet(item: $backupSetupTarget) { target in BackupSetupView(config: model.config, target: target.rawValue, vaultConfigured: model.status?.vaultSet == true) { model.status = nil; model.refresh() } }
         .sheet(isPresented: $showLoginReset) { LocalPasswordResetView(model: model) }
