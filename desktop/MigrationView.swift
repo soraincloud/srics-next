@@ -58,7 +58,7 @@ struct MigrationView: View {
                     Text(directory.isEmpty ? "尚未选择" : directory).font(.system(size: 12)).foregroundStyle(GlobalPalette.muted).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                 }.disabled(busy)
                 Text("迁移会暂停访问，复制数据库、原件、私密文件、回收站和上传进度。校验通过后才切换路径；登录密码、保险库口令与恢复密钥记录保持原样。").font(.callout).foregroundStyle(GlobalPalette.muted)
-                Text("新位置需容纳完整资料库，建议使用 APFS 磁盘。原目录会保留，不会自动删除。备份仓库仍使用原来的位置。").font(.caption).foregroundStyle(GlobalPalette.muted)
+                Text("新位置需容纳完整资料库，建议使用 APFS 磁盘。原目录会保留，不会自动删除。备份保存位置保持原样。").font(.caption).foregroundStyle(GlobalPalette.muted)
             }
             if !message.isEmpty { Text(message).font(.callout).foregroundStyle(failed ? Color.red : GlobalPalette.muted).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) }
             if completed {

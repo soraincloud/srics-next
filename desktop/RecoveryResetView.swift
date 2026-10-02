@@ -32,7 +32,7 @@ struct RecoveryResetView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             GlobalHeading(title: "配置恢复后的资料库", icon: "lock.rotation")
-            Text("备份已恢复到新目录。为新资料库设置登录密码与保险库口令；恢复 JSON 仅用于解开备份中的私密资料，不修改原资料库。").font(.callout).foregroundStyle(.secondary)
+            Text("为恢复后的资料库设置新的登录密码与保险库口令。原资料库不受影响；恢复 JSON 只用于从备份恢复资料。").font(.callout).foregroundStyle(.secondary)
             PasswordField(title: "新登录密码", text: $password, placeholder: "12–72 字节，用于浏览器登录", error: password.contains("\n") || password.contains("\r") ? "登录密码不能包含换行符。" : nil)
             PasswordField(title: "确认登录密码", text: $repeated, error: !repeated.isEmpty && !password.utf8.elementsEqual(repeated.utf8) ? "两次登录密码不一致。" : nil)
             if result.vaultPresent {
@@ -40,7 +40,7 @@ struct RecoveryResetView: View {
                 PasswordField(title: "新保险库口令", text: $vaultPassword, placeholder: "12–1024 字节，用于解锁私密资料", error: vaultPassword.contains("\n") || vaultPassword.contains("\r") ? "保险库口令不能包含换行符。" : nil)
                 PasswordField(title: "确认保险库口令", text: $vaultRepeated, error: !vaultRepeated.isEmpty && !vaultPassword.utf8.elementsEqual(vaultRepeated.utf8) ? "两次保险库口令不一致。" : nil)
             }
-            Text("这不会撤销恢复密钥。云端凭据与日常备份口令仍需在本机配置中重新设置。").font(.caption).foregroundStyle(.secondary)
+            Text("继续保管原恢复 JSON。启用恢复后的资料库后，重新选择备份位置；使用云端时重新填写云账号访问密钥，无需设置备份口令。").font(.caption).foregroundStyle(.secondary)
             if !message.isEmpty { Text(message).font(.callout).textSelection(.enabled) }
             HStack {
                 if busy { ProgressView().controlSize(.small) }

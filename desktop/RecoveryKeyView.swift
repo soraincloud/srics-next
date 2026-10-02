@@ -53,7 +53,7 @@ struct RecoveryKeyRequest: Encodable, Sendable { let target: String; let file: S
                 let response = try await Task.detached { try command.run(actualAction, payload: payload, as: RecoveryKeyResponse.self) }.value
                 info = response.info
                 if action == "recovery-key-generate" { password = ""; step = 1; message = "恢复 JSON 已保存。请重新选择它，确认文件可读并启用恢复能力。" }
-                else if action == "recovery-key-confirm" { step = 2; message = target == "unified" ? "恢复 JSON 已验证。下一步选择保存位置，创建第一份备份。" : "恢复密钥和新备份均已验证。请离线保管恢复文件。" }
+                else if action == "recovery-key-confirm" { step = 2; message = target == "unified" ? "恢复 JSON 已验证。请继续单独保管此文件。" : "恢复密钥和新备份均已验证。请离线保管恢复文件。" }
                 else { step = info?.state == "verified" ? (requiresConfirmation ? 1 : 2) : info?.state == "exported" ? 1 : 0; message = "" }
             } catch { failed = true; message = error.localizedDescription }
             busy = false; process = nil; AppDelegate.recoveryBusy = false
@@ -101,11 +101,13 @@ struct RecoveryKeyView: View {
                                 .disabled(vaultConfigured && model.password.isEmpty)
                         }
                     } else if model.step == 1 {
-                        GlobalCard("2 · 确认文件可用并启用", icon: "checkmark.shield") {
-                            Text(model.target == "unified" ? "重新选择刚保存的 JSON，确认文件能读取，并校验私密原文件的恢复能力。验证后再选择备份位置。" : "重新选择刚保存的 JSON，验证解锁能力并创建备份。")
-                            Text("只有完成这一步，才能依靠这个文件恢复。中途失败可使用同一 JSON 重试，无需重新生成。").font(.caption).foregroundStyle(.secondary)
-                            Button("选择已保存的 JSON，验证并启用…") { model.confirm() }.buttonStyle(RecoveryActionStyle())
-                            Button("未保留导出的文件，重新生成") { model.step = 0; model.message = "" }
+                        GlobalCard(model.info?.state == "verified" ? "验证已有恢复 JSON" : "2 · 确认文件可用并启用", icon: "checkmark.shield") {
+                            Text(model.info?.state == "verified" ? "选择单独保管的原 JSON，确认文件仍可读取并恢复此资料库的私密原件。" : model.target == "unified" ? "重新选择刚保存的 JSON，确认文件能读取，并校验私密原文件的恢复能力。验证后再选择备份位置。" : "重新选择刚保存的 JSON，验证解锁能力并创建备份。")
+                            Text(model.info?.state == "verified" ? "验证不会生成或替换 JSON，也不会修改密码。" : "只有完成这一步，才能依靠这个文件恢复。中途失败可使用同一 JSON 重试，无需重新生成。").font(.caption).foregroundStyle(.secondary)
+                            Button(model.info?.state == "verified" ? "选择原 JSON 并验证…" : "选择已保存的 JSON，验证并启用…") { model.confirm() }.buttonStyle(RecoveryActionStyle())
+                            if model.info?.state != "verified" {
+                                Button("未保留导出的文件，重新生成") { model.step = 0; model.message = "" }
+                            }
                         }
                     } else {
                         GlobalCard("恢复钥匙已验证", icon: "checkmark.shield") {

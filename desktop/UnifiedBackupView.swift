@@ -50,7 +50,7 @@ struct UnifiedBackupView: View {
         guard let payload = try? JSONEncoder().encode(request) else { return }
         let action = exportOnly ? "unified-backup-run" : "unified-backup-configure"
         let process = RecoveryProcess(); command = process; busy = true; failed = false; AppDelegate.recoveryBusy = true
-        message = "正在创建备份并完整读取校验。云端保存还会下载读回校验，请保持窗口打开…"
+        message = !exportOnly && cloudEnabled ? "正在创建备份并上传，随后完整下载读回校验，请保持窗口打开…" : "正在创建备份并完整读取校验，请保持窗口打开…"
         Task {
             do {
                 let response = try await Task.detached { try process.run(action, payload: payload, as: UnifiedBackupResponse.self) }.value
@@ -90,7 +90,7 @@ struct UnifiedBackupView: View {
                         }
                         if !exportOnly {
                             GlobalCard("云端保存（可选）", icon: "cloud") {
-                                Toggle("同时保存到 S3 兼容存储", isOn: $cloudEnabled)
+                                Toggle("保存到 S3 兼容存储", isOn: $cloudEnabled)
                                 if cloudEnabled {
                                     TextField("HTTPS Endpoint", text: $connection.endpoint)
                                     HStack { TextField("区域，例如 us-east-1", text: $connection.region); TextField("存储桶", text: $connection.bucket) }

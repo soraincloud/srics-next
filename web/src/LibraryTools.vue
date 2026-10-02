@@ -13,6 +13,8 @@ const items = ref<Item[]>([]),
   backup = ref<any>(),
   target = ref("local"),
   error = ref(""),
+  loadError = ref(""),
+  loading = ref(false),
   busy = ref(false),
   next = ref(""),
   snapshot = ref(0);
@@ -67,27 +69,37 @@ let timer: ReturnType<typeof setTimeout> | undefined,
   loadVersion = 0;
 async function load(more = false) {
   const version = ++loadVersion;
+  clearTimeout(timer);
+  loading.value = true;
   try {
     if (props.page === "trash") {
-      storage.value = await api("/api/storage");
-      const data = await api(
-        `/api/library?module=all&trash=1${more ? "&after=" + next.value + "&snapshot=" + snapshot.value : ""}`,
-      );
+      const [space, data] = await Promise.all([
+        api("/api/storage"),
+        api(`/api/library?module=all&trash=1${more ? "&after=" + next.value + "&snapshot=" + snapshot.value : ""}`),
+      ]);
+      if (stopped || version !== loadVersion) return;
+      storage.value = space;
       items.value = more ? [...items.value, ...data.items] : data.items;
       next.value = data.next;
       snapshot.value = data.snapshot;
     } else {
       const result = await api(`/api/backup?target=${target.value}`);
       if (stopped || version !== loadVersion) return;
+      const savedAt = backup.value?.last?.savedAt;
       backup.value = result;
-      if (!stopped) {
-        clearTimeout(timer);
-        timer = setTimeout(() => load(), backup.value.busy ? 1500 : 30000);
-      }
+      if (historyLoaded.value && !historyBusy.value && savedAt !== result.last?.savedAt)
+        void loadHistory();
     }
+    loadError.value = "";
   } catch (e) {
     if (stopped || version !== loadVersion) return;
-    error.value = (e as Error).message;
+    loadError.value = (e as Error).message;
+  } finally {
+    if (!stopped && version === loadVersion) {
+      loading.value = false;
+      if (props.page === "backup")
+        timer = setTimeout(() => load(), loadError.value ? 3000 : backup.value?.busy ? 1500 : 30000);
+    }
   }
 }
 async function restore(id: string) {
@@ -112,6 +124,7 @@ async function purge(id: string) {
   )
     return;
   busy.value = true;
+  error.value = "";
   try {
     await api(`/api/items/${id}/purge`, { method: "POST" });
     await load();
@@ -175,6 +188,7 @@ function date(value: string) {
 watch([() => props.page, target], () => {
   clearTimeout(timer);
   error.value = "";
+  loadError.value = "";
   backup.value = undefined;
   retentionPlan.value = undefined;
   historyVersion++;
@@ -206,6 +220,10 @@ onUnmounted(() => {
     </div>
   </section>
   <p v-if="error" class="notice warning" role="alert">{{ error }}</p>
+  <div v-if="loadError" class="notice warning" role="alert">
+    <span>{{ loadError }}</span>
+    <button class="button small secondary" :disabled="loading" @click="load()">{{ loading ? "重试中…" : "重新读取" }}</button>
+  </div>
   <template v-if="page === 'trash'">
     <p v-if="storage" class="subtle-copy">
       资料文件占用 {{ fileSize(storage.usage.bytes) }} · 磁盘可用
@@ -252,8 +270,8 @@ onUnmounted(() => {
         </button>
       </div>
     </div>
-    <EmptyState v-else-if="storage && !error" icon="trash" title="回收站为空" description="移到回收站的漫画、小说、图片和照片会显示在这里。" />
-    <button v-if="next" class="button secondary" @click="load(true)">
+    <EmptyState v-else-if="storage && !error && !loadError" icon="trash" title="回收站为空" description="移到回收站的漫画、小说、图片和照片会显示在这里。" />
+    <button v-if="next" class="button secondary" :disabled="loading" @click="load(true)">
       加载更多
     </button>
     <p class="page-footnote">
@@ -505,4 +523,5 @@ onUnmounted(() => {
     </p>
     </details>
   </template>
+  <p v-else-if="!loadError" class="subtle-copy" role="status">正在读取备份状态…</p>
 </template>

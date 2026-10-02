@@ -153,12 +153,9 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
       <div class="sidebar-bottom">
         <a href="#/backup" class="nav-item" :aria-current="page === 'backup' ? 'page' : undefined"><Icon name="shield" /><span>备份中心</span></a>
         <a href="#/trash" class="nav-item" :aria-current="page === 'trash' ? 'page' : undefined"><Icon name="trash" /><span>回收站</span></a>
-        <a href="#/verify" class="nav-item" :aria-current="page === 'verify' ? 'page' : undefined">
-          <Icon name="shield" /><span>样本自检</span>
-          <span v-if="busy" class="nav-activity" aria-label="验证进行中"></span>
-        </a>
-        <a href="#/about" class="nav-item" :aria-current="page === 'about' ? 'page' : undefined">
+        <a href="#/about" class="nav-item" :aria-current="['about', 'verify'].includes(page) ? 'page' : undefined">
           <Icon name="info" /><span>关于 SRICS</span>
+          <span v-if="busy" class="nav-activity" aria-label="样本自检进行中"></span>
         </a>
         <p v-if="release" class="release-label">{{ release.label }}</p>
       </div>
@@ -229,7 +226,7 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
               <button class="button primary" :disabled="busy || connection !== 'online'" @click="start">
                 <Icon v-if="!busy" :name="complete ? 'refresh' : 'play'" />{{ actionLabel }}
               </button>
-              <button v-if="complete" class="button secondary" @click="downloadReport"><Icon name="download" />下载验证报告</button>
+              <button v-if="complete" class="button secondary" @click="downloadReport"><Icon name="download" />下载自检报告</button>
               <span v-if="finished && !busy" class="last-run">完成于 {{ finished }}</span>
               <span v-else class="last-run">仅使用临时样本，不会读取你的文件</span>
             </div>
@@ -258,7 +255,7 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
               </div>
             </div>
           </section>
-          <p class="page-footnote">这是合成样本的验证结果；实际资料备份状态请查看备份中心。</p>
+          <p class="page-footnote">自检报告仅供排查问题，无需为恢复保管；实际资料备份状态请查看备份中心。</p>
           <details v-if="report && Object.keys(report.versions || {}).length" class="environment panel">
             <summary>运行环境<span>技术信息</span><Icon name="chevron-right" /></summary>
             <dl><template v-for="(value, key) in report.versions" :key="key"><dt>{{ key }}</dt><dd>{{ value }}</dd></template></dl>
@@ -268,7 +265,7 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
         <PrivateView v-else-if="activeModule && ['private','files'].includes(activeModule.id)" :key="activeModule.id" :module="activeModule.id" />
         <NovelView v-else-if="activeModule?.id === 'novels'" :key="itemId || 'novel-list'" :item-id="itemId" />
         <LibraryView v-else-if="activeModule" :module="activeModule.id" :item-id="itemId" :name="activeModule.name" :sub="activeModule.sub" />
-        <LibraryTools v-else-if="page === 'trash' || page === 'backup'" :page="page" />
+        <LibraryTools v-else-if="page === 'trash' || page === 'backup'" :key="page" :page="page" />
 
         <template v-else-if="page === 'about'">
           <section class="page-heading"><div><h1>关于 SRICS</h1></div></section>
@@ -282,11 +279,15 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
           </dl>
           <div class="about-notes">
             <div><Icon name="book" /><h3>名称与标签</h3><p>漫画和小说可在新建、上传或编辑时设置标签，用逗号分隔。名称搜索和标签筛选可同时使用，多个标签需全部满足。</p></div>
-            <div><Icon name="shield" /><h3>备份与恢复</h3><p>在本机程序中配置独立硬盘或云端加密备份，并单独保管恢复密钥。实际备份时间与校验结果见备份中心。</p></div>
+            <div><Icon name="shield" /><h3>备份与恢复</h3><p>所有新备份使用同一种 .sricsbackup 文件。恢复时选择完整备份和单独保管的恢复 JSON；设置与恢复在本机 App 中完成。</p></div>
             <div><Icon name="lock" /><h3>私密空间</h3><p>私密照片与个人文件需使用保险库口令独立解锁。离开时可手动锁定，闲置后也会自动锁定。</p></div>
-            <div><Icon name="computer" /><h3>样本自检</h3><p>只使用临时样本，不读取你的资料。自检通过不能替代真实备份及恢复检查。</p></div>
+            <div><Icon name="computer" /><h3>本机设置</h3><p>密码、资料目录、网络和自动备份在 SRICS Next App 中设置；网页用于浏览、上传、编辑和下载。</p></div>
           </div>
-          <a href="#/verify" class="text-link">打开样本自检<Icon name="arrow" /></a>
+          <details class="environment panel">
+            <summary>故障排查<span>按需使用</span><Icon name="chevron-right" /></summary>
+            <p class="subtle-copy">样本自检只使用临时资料，不读取你的文件，也不代表你的资料已备份。下载的自检报告用于排查问题，与恢复 JSON 无关。</p>
+            <p><a href="#/verify" class="text-link">打开样本自检<Icon name="arrow" /></a></p>
+          </details>
         </template>
 
         <EmptyState v-else icon="folder" title="找不到这个页面" description="链接可能已失效，请从资料库重新进入。">
@@ -299,6 +300,7 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
       <a href="#/" :aria-current="inLibrary ? 'page' : undefined"><Icon name="library" /><span>资料库</span></a>
       <a href="#/backup" :aria-current="page === 'backup' ? 'page' : undefined"><Icon name="shield" /><span>备份</span></a>
       <a href="#/trash" :aria-current="page === 'trash' ? 'page' : undefined"><Icon name="trash" /><span>回收站</span></a>
+      <a href="#/about" :aria-current="['about', 'verify'].includes(page) ? 'page' : undefined"><Icon name="info" /><span>关于</span></a>
     </nav>
   </div>
 </template>

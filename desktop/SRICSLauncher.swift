@@ -234,7 +234,7 @@ struct LauncherView: View {
     @StateObject private var model = Launcher()
     @State private var showRecovery = false
     @State private var showUnifiedBackup = false
- @State private var showRecoveryKey = false
+    @State private var showRecoveryKey = false
     @State private var showBackupPackage = false
     @State private var backupSetupTarget: BackupSetupTarget?
     @State private var showMigration = false
