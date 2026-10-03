@@ -1,10 +1,10 @@
 # SRICS Next
 
-用于局域网的个人资料库：管理漫画、小说、图片、个人照片、私密照片与个人文件。
+用于局域网的个人资料库：管理漫画、小说、Markdown 文档、图片、个人照片、私密照片与个人文件。
 
 Self-hosted personal library with private storage, encrypted backups, and disaster recovery.
 
-**当前版本：v0.3.0-rc19 · Build 25，公开测试版。Apple Silicon Mac，macOS 27.0 或更新版本。**
+**当前版本：v0.3.0-rc20 · Build 26，公开测试版。Apple Silicon Mac，macOS 27.0 或更新版本。**
 
 项目原创代码、文档和应用图标使用 [AGPL-3.0-only](LICENSE)。第三方组件保留各自许可，见 [第三方声明](THIRD_PARTY_NOTICES.md)。许可证不改变用户资料的归属。发布修改版或通过网络提供修改版时，应按 AGPL 提供相应源码。
 
@@ -34,12 +34,13 @@ Self-hosted personal library with private storage, encrypted backups, and disast
 
 所有日期备份保留，不自动删除；完整包需要额外空间。网盘同步目录的文件需等待同步完成。旧备份继续使用对应旧 JSON，兼容入口保留。
 
-## 六类资料
+## 七类资料
 
 | 模块 | 操作 |
 | --- | --- |
 | 漫画 | 文件夹导入、名称与标签搜索、第一页预览、连续阅读、整本 ZIP 下载 |
 | 小说 | 名称与标签搜索、章节编辑 / 增删 / 排序、阅读、TXT 下载 |
+| 文档 | 新建 / 编辑 Markdown、名称与标签搜索、预览与阅读、MD 原文下载 |
 | 图片 | 批量上传下载、列表与随机浏览 |
 | 个人照片 | 原文件上传、列表、原件下载 |
 | 私密照片 | 独立解锁、加密上传下载、列表与随机浏览 |

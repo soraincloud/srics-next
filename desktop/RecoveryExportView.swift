@@ -6,7 +6,7 @@ struct RecoveredItem: Decodable, Identifiable, Sendable {
     var name: String
     var module: String
     var `private`: Bool
-    var category: String { ["comics":"漫画", "novels":"小说", "images":"图片", "photos":"个人照片", "private":"私密照片", "files":"个人文件"][module] ?? module }
+    var category: String { ["comics":"漫画", "novels":"小说", "documents":"文档", "images":"图片", "photos":"个人照片", "private":"私密照片", "files":"个人文件"][module] ?? module }
 }
 @MainActor final class RecoveryExportModel: ObservableObject {
     @Published var items: [RecoveredItem] = []

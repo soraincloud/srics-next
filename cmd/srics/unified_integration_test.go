@@ -102,6 +102,12 @@ func TestUnifiedPackageSurvivesTotalMachineLoss(t *testing.T) {
 	if _, err = l.CreateChapter(novel.ID, library.NewID(), "第一章", "整机丢失后仍可取回的正文", novel.Revision); err != nil {
 		t.Fatal(err)
 	}
+	documentBody := []byte("# 应急文档\r\n\r\n**整机丢失后仍可取回的 Markdown 原文**  \r\n")
+	document, err := l.SaveDocument(ctx, library.NewID(), "应急文档", []string{"恢复", "笔记"}, string(documentBody), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	originals[document.Item.ID] = original{module: "documents", pages: [][]byte{documentBody}}
 	wrapped, err := l.PrepareVault("synthetic-original-vault-password", "")
 	if err != nil {
 		t.Fatal(err)
@@ -376,14 +382,14 @@ func TestUnifiedPackageSurvivesTotalMachineLoss(t *testing.T) {
 		t.Fatal("missing recovery receipt")
 	}
 	items := recoveryCLI(t, ctx, binary, newConfigPath, "recovery-items", r)
-	if len(items.Items) != 6 {
-		t.Fatal("key-only listing did not recover all six modules")
+	if len(items.Items) != 7 {
+		t.Fatal("key-only listing did not recover all seven modules")
 	}
 	seenModules := map[string]bool{}
 	for _, it := range items.Items {
 		seenModules[it.Module] = true
 	}
-	for _, module := range []string{"comics", "images", "photos", "novels", "private", "files"} {
+	for _, module := range []string{"comics", "images", "photos", "novels", "documents", "private", "files"} {
 		if !seenModules[module] {
 			t.Fatal("missing recovered module", module)
 		}

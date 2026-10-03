@@ -6,6 +6,7 @@ import LibraryView from "./LibraryView.vue";
 import PrivateView from "./PrivateView.vue";
 import { installVaultLifecycle, vaultOpen, lockVault } from "./vault";
 import NovelView from "./NovelView.vue";
+import DocumentView from "./DocumentView.vue";
 import { canNavigate } from "./navigation";
 import LibraryTools from "./LibraryTools.vue";
 import { api, authenticated, fileSize } from "./api";
@@ -140,12 +141,12 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
           <Icon name="library" /><span>资料库</span>
         </a>
         <p class="nav-label">资料分类</p>
-        <a v-for="item in modules.slice(0, 4)" :key="item.id" :href="'#/library/' + item.id"
+        <a v-for="item in modules.filter(item => !['private', 'files'].includes(item.id))" :key="item.id" :href="'#/library/' + item.id"
           class="nav-item" :aria-current="activeModule?.id === item.id ? 'page' : undefined">
           <Icon :name="item.icon" /><span>{{ item.name }}</span>
         </a>
         <p class="nav-label">私密空间</p>
-        <a v-for="item in modules.slice(4)" :key="item.id" :href="'#/library/' + item.id"
+        <a v-for="item in modules.filter(item => ['private', 'files'].includes(item.id))" :key="item.id" :href="'#/library/' + item.id"
           class="nav-item" :aria-current="activeModule?.id === item.id ? 'page' : undefined">
           <Icon :name="item.icon" /><span>{{ item.name }}</span>
         </a>
@@ -187,7 +188,7 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
 
           <section class="library-overview panel"><div class="library-stat"><strong>{{ Object.values(stats.counts).reduce((n,v)=>n+v,0) }}</strong><span>项普通资料</span></div><div class="library-stat"><strong>{{ fileSize(stats.size) }}</strong><span>原件大小</span></div></section>
 
-          <div class="section-heading library-section-heading"><h2>资料空间</h2><span class="quiet-badge">6 个独立空间</span></div>
+          <div class="section-heading library-section-heading"><h2>资料空间</h2><span class="quiet-badge">{{ modules.length }} 个独立空间</span></div>
           <div class="library-grid">
             <a v-for="item in modules" :key="item.id" :href="'#/library/' + item.id"
               class="library-card" :aria-label="item.name + '，打开资料空间'">
@@ -264,6 +265,7 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
 
         <PrivateView v-else-if="activeModule && ['private','files'].includes(activeModule.id)" :key="activeModule.id" :module="activeModule.id" />
         <NovelView v-else-if="activeModule?.id === 'novels'" :key="itemId || 'novel-list'" :item-id="itemId" />
+        <DocumentView v-else-if="activeModule?.id === 'documents'" :key="itemId || 'document-list'" :item-id="itemId" />
         <LibraryView v-else-if="activeModule" :module="activeModule.id" :item-id="itemId" :name="activeModule.name" :sub="activeModule.sub" />
         <LibraryTools v-else-if="page === 'trash' || page === 'backup'" :key="page" :page="page" />
 
@@ -271,7 +273,7 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
           <section class="page-heading"><div><h1>关于 SRICS</h1></div></section>
           <section class="about-intro panel">
             <span class="brand-mark"><Icon name="library" /></span>
-            <div><h2>SRICS Next</h2><p v-if="release" class="release-current">{{ release.label }}</p><p>管理漫画、小说、图片、个人照片与私密文件。</p></div>
+            <div><h2>SRICS Next</h2><p v-if="release" class="release-current">{{ release.label }}</p><p>管理漫画、小说、Markdown 文档、图片、个人照片与私密文件。</p></div>
           </section>
           <dl v-if="release" class="release-metadata">
             <div><dt>代码版本</dt><dd :title="release.commit">{{ release.commit ? release.commit.slice(0, 12) : '未记录' }}{{ release.dirty ? '（含未提交修改）' : '' }}</dd></div>
@@ -288,7 +290,7 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
             </div>
           </section>
           <div class="about-notes">
-            <div><Icon name="book" /><h3>名称与标签</h3><p>漫画和小说可在新建、上传或编辑时设置标签，用逗号分隔。名称搜索和标签筛选可同时使用，多个标签需全部满足。</p></div>
+            <div><Icon name="book" /><h3>名称与标签</h3><p>漫画、小说和文档可在新建、上传或编辑时设置标签，用逗号分隔。名称搜索和标签筛选可同时使用，多个标签需全部满足。</p></div>
             <div><Icon name="shield" /><h3>备份与恢复</h3><p>所有新备份使用同一种 .sricsbackup 文件。恢复时选择完整备份和单独保管的恢复 JSON；设置与恢复在本机 App 中完成。</p></div>
             <div><Icon name="lock" /><h3>私密空间</h3><p>私密照片与个人文件需使用保险库口令独立解锁。离开时可手动锁定，闲置后也会自动锁定。</p></div>
             <div><Icon name="computer" /><h3>本机设置</h3><p>密码、资料目录、网络和自动备份在 SRICS Next App 中设置；网页用于浏览、上传、编辑和下载。</p></div>

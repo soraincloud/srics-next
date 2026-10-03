@@ -95,7 +95,7 @@ func NewID() string {
 	return hex.EncodeToString(b)
 }
 func ValidModule(m string) bool {
-	return m == "comics" || m == "images" || m == "photos" || m == "novels"
+	return m == "comics" || m == "images" || m == "photos" || m == "novels" || m == "documents"
 }
 func Create(root string) error {
 	if err := os.Mkdir(root, 0700); err != nil {
@@ -184,7 +184,7 @@ func openLibrary(root string, initialize bool) (*Library, error) {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version > 4 {
+	if version > 5 {
 		return fail(errors.New("数据版本较新，请升级程序后打开"))
 	}
 	if version < 0 || (version == 0 && !initialize) {
@@ -225,6 +225,11 @@ PRAGMA user_version=1;`)
 	}
 	if version < 4 {
 		if err = migrateTransfers(db, root, version > 0); err != nil {
+			return fail(err)
+		}
+	}
+	if version < 5 {
+		if err = migrateDocuments(db, root, version > 0); err != nil {
 			return fail(err)
 		}
 	}

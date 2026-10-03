@@ -8,6 +8,10 @@ export const modules = [
     sub: "管理章节，随时阅读和编辑。", kind: "章节 · 标签 · 阅读",
   },
   {
+    id: "documents", name: "文档", icon: "text", color: "blue",
+    sub: "编写 Markdown，按名称与标签整理。", kind: "Markdown · 标签 · 阅读",
+  },
+  {
     id: "images", name: "图片", icon: "image", color: "green",
     sub: "批量上传、列表与随机浏览。", kind: "列表 · 随机浏览",
   },

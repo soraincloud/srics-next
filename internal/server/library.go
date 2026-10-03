@@ -225,6 +225,9 @@ func (a *LibraryAPI) handle(w http.ResponseWriter, r *http.Request) {
 	case len(parts) >= 2 && parts[1] == "novels":
 		a.novels(w, r, parts)
 		return
+	case len(parts) >= 2 && parts[1] == "documents":
+		a.documents(w, r, parts)
+		return
 	case r.URL.Path == "/api/library" && r.Method == "GET":
 		result, err = a.list(r)
 	case r.URL.Path == "/api/storage" && r.Method == "GET":
@@ -427,7 +430,7 @@ func (a *LibraryAPI) list(r *http.Request) (any, error) {
 		if it.Seq > snapshot {
 			continue
 		}
-		if module == "comics" || module == "novels" {
+		if module == "comics" || module == "novels" || module == "documents" {
 			if !strings.Contains(strings.ToLower(it.Name), name) {
 				continue
 			}
@@ -545,6 +548,10 @@ func (a *LibraryAPI) download(w http.ResponseWriter, r *http.Request, id string)
 	}
 	if it.Module == "novels" {
 		a.downloadNovel(w, r, id)
+		return
+	}
+	if it.Module == "documents" {
+		a.downloadDocument(w, r, id)
 		return
 	}
 	p := it.Pages[0]

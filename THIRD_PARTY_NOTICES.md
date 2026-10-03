@@ -5,6 +5,7 @@ SRICS Next 的原创部分使用 [AGPL-3.0-only](LICENSE)。以下组件保留�
 | 组件 | 来源及版本记录 | 许可证 |
 | --- | --- | --- |
 | Vue 及其运行时组件 | [vuejs/core](https://github.com/vuejs/core)，版本见 `web/package-lock.json` | MIT |
+| markdown-it 及其运行时依赖 | [markdown-it/markdown-it](https://github.com/markdown-it/markdown-it)，版本见 `web/package-lock.json` | MIT；依赖保留各自许可 |
 | age / hpke | [FiloSottile/age](https://github.com/FiloSottile/age)、[FiloSottile/hpke](https://github.com/FiloSottile/hpke)，版本见 `go.mod` | BSD-3-Clause |
 | go-sqlite3 | [mattn/go-sqlite3](https://github.com/mattn/go-sqlite3)，版本见 `go.mod`；随附 SQLite | MIT；SQLite 为公有领域 |
 | minio-go | [minio/minio-go](https://github.com/minio/minio-go)，版本见 `go.mod` | Apache-2.0 |

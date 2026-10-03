@@ -106,6 +106,9 @@ func exportRecovery(ctx context.Context, l *library.Library, a *vault.Access, id
 			return l.CopyOriginal(ctx, p, w)
 		}
 		switch it.Module {
+		case "documents":
+			name += ".md"
+			write = func(w io.Writer) error { return copyPage(w, it.Pages[0]) }
 		case "novels":
 			name += ".txt"
 			write = func(w io.Writer) error {

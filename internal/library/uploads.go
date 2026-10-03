@@ -66,7 +66,7 @@ func (l *Library) Uploads() ([]Upload, error) {
 	return out, rows.Err()
 }
 func (up Upload) validate() error {
-	if !IDPattern.MatchString(up.ID) || !ValidModule(up.Module) || up.Module == "novels" || len(up.Files) < 1 || len(up.Files) > 3000 {
+	if !IDPattern.MatchString(up.ID) || !ValidModule(up.Module) || up.Module == "novels" || up.Module == "documents" || len(up.Files) < 1 || len(up.Files) > 3000 {
 		return errors.New("上传索引损坏，已停止清理，请从备份恢复")
 	}
 	if up.State != "pending" && up.State != "failed" && up.State != "complete" && up.State != "cancelled" {
@@ -97,7 +97,7 @@ func (l *Library) CreateUpload(up Upload) (Upload, error) {
 	if err := l.Check(); err != nil {
 		return up, err
 	}
-	if !IDPattern.MatchString(up.ID) || !ValidModule(up.Module) || up.Module == "novels" || len(up.Files) == 0 || len(up.Files) > 3000 {
+	if !IDPattern.MatchString(up.ID) || !ValidModule(up.Module) || up.Module == "novels" || up.Module == "documents" || len(up.Files) == 0 || len(up.Files) > 3000 {
 		return up, errors.New("请选择有效的上传内容（每本最多 3000 页）")
 	}
 	var err error

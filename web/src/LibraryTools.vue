@@ -61,6 +61,7 @@ async function loadHistory(more = false) {
 const names: Record<string, string> = {
   comics: "漫画",
   novels: "小说",
+  documents: "文档",
   images: "图片",
   photos: "个人照片",
 };
@@ -237,7 +238,7 @@ onUnmounted(() => {
             :name="
               item.module === 'comics'
                 ? 'book'
-                : item.module === 'novels'
+                : ['novels', 'documents'].includes(item.module)
                   ? 'text'
                   : 'image'
             "
@@ -352,7 +353,7 @@ onUnmounted(() => {
                 ? target === "cloud"
                   ? "在本机程序中配置 S3 兼容存储。"
                   : "选择本地目录或独立硬盘保存加密备份。"
-                : "包含全部六类资料、历史版本与回收站。私密内容保持加密，无需解锁保险库。"
+                : "包含全部资料、历史版本与回收站。私密内容保持加密，无需解锁保险库。"
           }}
         </p>
       </div>
