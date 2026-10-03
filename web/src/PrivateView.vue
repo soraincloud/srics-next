@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch, nextTick } from "vue";
 import Icon from "./Icon.vue";
+import PasswordInput from "./PasswordInput.vue";
 import SegmentedControl from "./SegmentedControl.vue";
 import EmptyState from "./EmptyState.vue";
 import { useGalleryNavigation } from "./gallery";
@@ -32,8 +33,8 @@ type Item = {
 const props = defineProps<{ module: string }>();
 const isPhoto = computed(() => props.module === "private");
 const title = computed(() => (isPhoto.value ? "私密照片" : "个人文件"));
-const showPassword = ref(false);
-function hidePassword() { showPassword.value = false; }
+const passwordInput = ref<InstanceType<typeof PasswordInput>>();
+function hidePassword() { passwordInput.value?.hide(); }
 const password = ref(""),
   error = ref(""),
   loading = ref(false),
@@ -91,9 +92,10 @@ watch(vaultOpen, (open) => {
   else clearPrivate();
 });
 async function unlock() {
+  const value = passwordInput.value?.read();
+  if (value === undefined || unlocking.value) return;
   unlocking.value = true;
   error.value = "";
-  const value = password.value;
   password.value = "";
   hidePassword();
   try {
@@ -262,28 +264,16 @@ onUnmounted(() => {
     <p v-if="!checked">正在检查配置…</p>
     <form v-else-if="vaultConfigured" @submit.prevent="unlock">
       <label for="vault-password">保险库口令</label>
-      <div class="password-input">
-        <input
-          id="vault-password"
-          v-model="password"
-          :type="showPassword ? 'text' : 'password'"
-          autocomplete="off"
-          autocapitalize="none"
-          :spellcheck="false"
-          required
-          :disabled="unlocking"
-          placeholder="输入独立口令"
-        />
-        <button
-          type="button"
-          class="password-toggle"
-          :aria-label="showPassword ? '隐藏保险库口令' : '显示保险库口令'"
-          :aria-pressed="showPassword"
-          :title="showPassword ? '隐藏保险库口令' : '显示保险库口令'"
-          :disabled="unlocking"
-          @click="showPassword = !showPassword"
-        ><Icon :name="showPassword ? 'eye-off' : 'eye'" /></button>
-      </div>
+      <PasswordInput
+        ref="passwordInput"
+        id="vault-password"
+        label="保险库口令"
+        v-model="password"
+        autocomplete="off"
+        required
+        :disabled="unlocking"
+        placeholder="输入独立口令"
+      />
       <button class="button primary" :disabled="unlocking || !password">
         {{ unlocking ? "正在解锁…" : "解锁" }}<Icon name="arrow" />
       </button>

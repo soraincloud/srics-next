@@ -406,6 +406,7 @@ button:disabled { opacity: .45; }
 .password-toggle svg { width: 18px; height: 18px; }
 .password-toggle:hover, .password-toggle[aria-pressed="true"] { background: var(--surface-soft); color: var(--strong); }
 .password-hint { color: var(--muted); font-size: 12px; line-height: 1.7; margin: 0; }
+.password-input-hint { margin-top: 8px; }
 .auth-layout { min-height: 100dvh; padding: 30px; display: flex; flex-direction: column; align-items: center; }
 .auth-header { display: flex; align-items: center; justify-content: space-between; width: 100%; }
 .auth-card { width: min(100%,460px); margin: auto; padding: 38px; }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import Icon from "./Icon.vue";
+import PasswordInput from "./PasswordInput.vue";
 import PageActions from "./PageActions.vue";
 import SegmentedControl from "./SegmentedControl.vue";
 import EmptyState from "./EmptyState.vue";
@@ -44,6 +45,7 @@ const discardDialog = ref<HTMLDialogElement>(),
 const loginDialog = ref<HTMLDialogElement>(),
   password = ref(""),
   loginError = ref("");
+const passwordInput = ref<InstanceType<typeof PasswordInput>>();
 const dirty = computed(
   () =>
     !!chapter.value &&
@@ -414,12 +416,14 @@ async function useServer() {
   clearTimeout(timer);
 }
 async function login() {
+  const value = passwordInput.value?.read();
+  if (value === undefined || actionBusy.value) return;
   actionBusy.value = true;
   loginError.value = "";
   try {
     const state = await api("/api/auth/login", {
       method: "POST",
-      body: jsonBody({ password: password.value }),
+      body: jsonBody({ password: value }),
     });
     csrf.value = state.csrf;
     sessionExpired.value = false;
@@ -823,6 +827,7 @@ onUnmounted(() => {
   <dialog
     ref="loginDialog"
     class="app-dialog"
+    @close="password = ''; passwordInput?.hide()"
     @cancel="actionBusy && $event.preventDefault()"
   >
     <form class="form-stack" @submit.prevent="login">
@@ -838,13 +843,9 @@ onUnmounted(() => {
           <Icon name="close" />
         </button>
       </div>
-      <label
-        >登录密码<input
-          v-model="password"
-          type="password"
-          autocomplete="current-password"
-          required
-      /></label>
+      <label for="novel-login">登录密码</label>
+      <PasswordInput ref="passwordInput" id="novel-login" label="登录密码"
+        v-model="password" maxlength="72" :disabled="actionBusy" required />
       <p v-if="loginError" class="inline-error" role="alert">
         {{ loginError }}
       </p>

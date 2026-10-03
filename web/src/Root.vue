@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref } from "vue";
 import App from "./App.vue";
 import Icon from "./Icon.vue";
+import PasswordInput from "./PasswordInput.vue";
 import { api, authenticated, csrf, jsonBody, sessionExpired } from "./api";
 import { useTheme } from "./useTheme";
 const { theme, toggleTheme } = useTheme();
@@ -10,9 +11,9 @@ const ready = ref(false),
   busy = ref(false),
   password = ref(""),
   error = ref("");
-const showPassword = ref(false);
+const passwordInput = ref<InstanceType<typeof PasswordInput>>();
 const capsLock = ref(false);
-function hidePassword() { showPassword.value = false; }
+function hidePassword() { passwordInput.value?.hide(); }
 async function check() {
   error.value = "";
   try {
@@ -28,19 +29,21 @@ async function check() {
 }
 async function submit() {
   if (busy.value || !configured.value) return;
+  const value = passwordInput.value?.read();
+  if (value === undefined) return;
   error.value = "";
   busy.value = true;
   try {
     const state = await api(
       "/api/auth/login",
-      { method: "POST", body: jsonBody({ password: password.value }) },
+      { method: "POST", body: jsonBody({ password: value }) },
     );
     csrf.value = state.csrf;
     authenticated.value = true;
     sessionExpired.value = false;
     configured.value = true;
     password.value = "";
-    showPassword.value = false;
+    hidePassword();
   } catch (e) {
     error.value = (e as Error).message;
   } finally {
@@ -78,14 +81,12 @@ onUnmounted(() => window.removeEventListener("blur", hidePassword));
       <form v-if="ready && configured" class="form-stack" @submit.prevent="submit">
         <div class="login-password-group">
         <label for="login-password">登录密码</label>
-        <div class="password-input">
-          <input
+          <PasswordInput
+            ref="passwordInput"
             id="login-password"
+            label="登录密码"
             v-model="password"
-            :type="showPassword ? 'text' : 'password'"
             autocomplete="current-password"
-            autocapitalize="none"
-            :spellcheck="false"
             :aria-invalid="error ? true : undefined"
             :aria-describedby="error ? 'login-password-hint login-password-error' : 'login-password-hint'"
             @input="error = ''"
@@ -98,8 +99,6 @@ onUnmounted(() => window.removeEventListener("blur", hidePassword));
             placeholder="请输入密码"
             autofocus
         />
-        <button type="button" class="password-toggle" :aria-label="showPassword ? '隐藏登录密码' : '显示登录密码'" :aria-pressed="showPassword" :title="showPassword ? '隐藏登录密码' : '显示登录密码'" @click="showPassword = !showPassword"><Icon :name="showPassword ? 'eye-off' : 'eye'" /></button>
-        </div>
         <p id="login-password-hint" class="password-hint">使用本机程序中设置的登录密码；保险库口令用于解锁私密资料。</p>
         <p v-if="capsLock" class="password-hint" role="status">大写锁定已开启</p>
         <p v-if="error" id="login-password-error" class="inline-error" role="alert">{{ error }}</p>

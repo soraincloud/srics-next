@@ -39,7 +39,7 @@ func TestNewPasswordsRejectBrowserStrippedNewlines(t *testing.T) {
 }
 
 func TestFreshConfigurationLoginRoundTrip(t *testing.T) {
-	for _, password := range []string{"synthetic-login-123", "测试登录-password-123", " synthetic-\"cafe\u0301\"-🔑-123 "} {
+	for _, password := range []string{"synthetic-login-123", "测试登录-password-123", " synthetic-\"cafe\u0301\"-🔑-123 ", "safari.r.u.123456", "safari。r．u.123456"} {
 		t.Run(strconv.Itoa(len(password)), func(t *testing.T) {
 			root := t.TempDir()
 			path := filepath.Join(root, "config.json")
@@ -94,6 +94,11 @@ func TestFreshConfigurationLoginRoundTrip(t *testing.T) {
 			}
 			if err := verifyStartedLogin(context.Background(), path, c, "different-private-password"); err == nil || strings.Contains(err.Error(), password) {
 				t.Fatal("vault password accepted for login or error exposed password")
+			}
+			if altered := strings.ReplaceAll(password, ".", "。"); altered != password {
+				if err := verifyStartedLogin(context.Background(), path, c, altered); err == nil {
+					t.Fatal("Chinese punctuation was treated as an ASCII period")
+				}
 			}
 		})
 	}

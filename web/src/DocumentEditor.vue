@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import Icon from "./Icon.vue";
+import PasswordInput from "./PasswordInput.vue";
 import PageActions from "./PageActions.vue";
 import EmptyState from "./EmptyState.vue";
 import ActionConfirm from "./ActionConfirm.vue";
@@ -16,7 +17,8 @@ const saved = ref<Document>(), name = ref(""), tagText = ref(""), body = ref("")
 const loading = ref(props.id !== "new"), busy = ref(false), editing = ref(props.id === "new"), mode = ref("edit");
 const error = ref(""), nameError = ref(""), tagError = ref(""), bodyError = ref(""), conflict = ref(false);
 const confirmation = ref<InstanceType<typeof ActionConfirm>>(), markdown = ref<HTMLElement>(), nameInput = ref<HTMLInputElement>();
-const login = ref<HTMLDialogElement>(), password = ref(""), passwordVisible = ref(false), loginError = ref("");
+const login = ref<HTMLDialogElement>(), password = ref(""), loginError = ref("");
+const passwordInput = ref<InstanceType<typeof PasswordInput>>();
 const draftId = newID();
 const dirty = computed(() => name.value !== (saved.value?.item.name || "") || body.value !== (saved.value?.body || "") || JSON.stringify(parseTags(tagText.value)) !== JSON.stringify(saved.value?.item.tags || []));
 const html = computed(() => renderMarkdown(body.value));
@@ -108,10 +110,12 @@ function keydown(event: KeyboardEvent) {
 }
 async function reauthenticate() {
   if (busy.value) return;
+  const value = passwordInput.value?.read();
+  if (value === undefined) return;
   busy.value = true; loginError.value = "";
   try {
-    const state = await api("/api/auth/login", { method: "POST", body: jsonBody({ password: password.value }) });
-    csrf.value = state.csrf; sessionExpired.value = false; password.value = ""; passwordVisible.value = false; login.value?.close(); error.value = "";
+    const state = await api("/api/auth/login", { method: "POST", body: jsonBody({ password: value }) });
+    csrf.value = state.csrf; sessionExpired.value = false; password.value = ""; passwordInput.value?.hide(); login.value?.close(); error.value = "";
   } catch (e) { loginError.value = (e as Error).message; }
   finally { busy.value = false; }
 }
@@ -157,7 +161,7 @@ onUnmounted(() => {
     <article ref="markdown" class="markdown-content panel" aria-label="文档正文" @click="anchorClick"><div v-if="body" v-html="html"></div><p v-else class="document-blank">暂无正文</p></article>
   </template>
   <EmptyState v-else-if="!error" icon="text" title="找不到这篇文档"><a href="#/library/documents" class="button small secondary">返回文档列表</a></EmptyState>
-  <dialog ref="login" class="upload-dialog" @close="password = ''; passwordVisible = false">
-    <form class="form-stack" @submit.prevent="reauthenticate"><h2>重新登录</h2><label for="document-login">登录密码</label><div class="password-input"><input id="document-login" v-model="password" :type="passwordVisible ? 'text' : 'password'" autocomplete="current-password" :spellcheck="false" maxlength="72" required /><button type="button" class="password-toggle" :aria-label="passwordVisible ? '隐藏密码' : '显示密码'" :aria-pressed="passwordVisible" @click="passwordVisible = !passwordVisible"><Icon :name="passwordVisible ? 'eye-off' : 'eye'" /></button></div><p v-if="loginError" class="inline-error" role="alert">{{ loginError }}</p><div class="dialog-actions"><button type="button" class="button secondary" :disabled="busy" @click="login?.close()">取消</button><button class="button primary" :disabled="busy">{{ busy ? '登录中…' : '登录' }}</button></div></form>
+  <dialog ref="login" class="upload-dialog" @close="password = ''; passwordInput?.hide()">
+    <form class="form-stack" @submit.prevent="reauthenticate"><h2>重新登录</h2><label for="document-login">登录密码</label><PasswordInput ref="passwordInput" id="document-login" label="登录密码" v-model="password" maxlength="72" :disabled="busy" required /><p v-if="loginError" class="inline-error" role="alert">{{ loginError }}</p><div class="dialog-actions"><button type="button" class="button secondary" :disabled="busy" @click="login?.close()">取消</button><button class="button primary" :disabled="busy">{{ busy ? '登录中…' : '登录' }}</button></div></form>
   </dialog>
 </template>
