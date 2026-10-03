@@ -19,6 +19,7 @@ const { report, release, connection, error, starting, syncing, refreshing, busy,
 const { theme, toggleTheme } = useTheme();
 const route = ref(window.location.hash || "#/");
 const main = ref<HTMLElement>();
+const toolbar = ref<HTMLElement>();
 const expanded = ref(new Set<string>());
 const activeModule = computed(() => modules.find((item) => route.value === "#/library/" + item.id || route.value.startsWith("#/library/" + item.id + "/")));
 const itemId = computed(() => route.value.split("/")[3]);
@@ -30,6 +31,8 @@ const page = computed(() => activeModule.value ? "module"
   : route.value === "#/trash" ? "trash" : route.value === "#/backup" ? "backup" : route.value === "#/" ? "library" : "missing");
 const title = computed(() => activeModule.value?.name
   || ({ library: "资料库", trash: "回收站", backup: "备份中心", verify: "样本自检", about: "关于 SRICS", missing: "页面不存在" } as Record<string, string>)[page.value]);
+const returnTarget = computed(() => activeModule.value && itemId.value ? "#/library/" + activeModule.value.id : "#/");
+const returnLabel = computed(() => activeModule.value && itemId.value ? "返回" + activeModule.value.name : "返回资料库");
 const inLibrary = computed(() => page.value === "library" || page.value === "module");
 const passed = computed(() => report.value?.checks.filter((item) => item.status === "passed").length || 0);
 const total = computed(() => report.value?.checks.length || 11);
@@ -79,6 +82,7 @@ const checkHints: Record<string, string> = {
 };
 
 let stopVault: (()=>void)|undefined;
+let toolbarObserver: ResizeObserver | undefined;
 let changingRoute = false;
 async function routeChanged() {
   if (changingRoute) return;
@@ -114,8 +118,18 @@ function downloadReport() {
 watch(title, (value) => { document.title = value + " · SRICS Next"; }, { immediate: true });
 watch(() => report.value?.startedAt, () => { expanded.value = new Set(); });
 watch(() => failedCheck.value?.id, (id) => { if (id) expanded.value = new Set([...expanded.value, id]); });
-onMounted(() => { stopVault=installVaultLifecycle(); window.addEventListener("hashchange", routeChanged); window.addEventListener("library-changed", loadStats); void loadStats(); });
-onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListener("hashchange", routeChanged); window.removeEventListener("library-changed", loadStats); });
+onMounted(() => {
+  toolbarObserver = new ResizeObserver(() => {
+    document.documentElement.style.setProperty("--page-toolbar-height", Math.ceil(toolbar.value?.getBoundingClientRect().height || 64) + "px");
+  });
+  if (toolbar.value) toolbarObserver.observe(toolbar.value);
+  stopVault=installVaultLifecycle(); window.addEventListener("hashchange", routeChanged); window.addEventListener("library-changed", loadStats); void loadStats();
+});
+onUnmounted(() => {
+  toolbarObserver?.disconnect();
+  document.documentElement.style.removeProperty("--page-toolbar-height");
+  stopVault?.(); clearUploadMemory(); window.removeEventListener("hashchange", routeChanged); window.removeEventListener("library-changed", loadStats);
+});
 </script>
 
 <template>
@@ -163,15 +177,16 @@ onUnmounted(() => { stopVault?.(); clearUploadMemory(); window.removeEventListen
     </aside>
 
     <div class="workspace">
-      <header class="toolbar">
+      <header ref="toolbar" class="toolbar" aria-label="页面导航与操作">
         <div class="breadcrumb">
-          <a v-if="activeModule" href="#/" class="back-link"><Icon name="chevron-left" />资料库</a>
-          <span v-if="activeModule" class="breadcrumb-divider">/</span>
-          <span>{{ title }}</span>
+          <a v-if="page !== 'library'" :href="returnTarget" class="back-link"><Icon name="chevron-left" />{{ returnLabel }}</a>
+          <span v-if="page !== 'library' && !itemId" class="breadcrumb-divider">/</span>
+          <span v-if="!itemId">{{ title }}</span>
         </div>
+        <div id="page-actions" class="toolbar-actions"></div>
       </header>
 
-      <main ref="main" class="main-content" tabindex="-1" :aria-label="title">
+      <main ref="main" class="main-content" :class="{ 'document-workspace': activeModule?.id === 'documents' && itemId }" tabindex="-1" :aria-label="title">
         <div v-if="connection === 'offline'" class="notice warning" role="alert">
           <Icon name="info" />
           <div><strong>暂时无法连接服务</strong><p>请确认 SRICS 仍在运行。恢复连接后，进度会自动更新。</p></div>

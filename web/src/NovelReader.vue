@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import Icon from "./Icon.vue";
+import PageActions from "./PageActions.vue";
 import SegmentedControl from "./SegmentedControl.vue";
 import EmptyState from "./EmptyState.vue";
 import ActionConfirm from "./ActionConfirm.vue";
@@ -483,15 +484,17 @@ onUnmounted(() => {
   <ActionConfirm ref="confirmation" />
   <section class="page-heading reader-heading novel-heading">
     <div>
-      <a href="#/library/novels" class="back-link"
-        ><Icon name="chevron-left" />返回小说</a
-      >
       <h1>{{ novel.item.name }}</h1>
       <div class="content-tags">
         <span v-for="t in novel.item.tags" :key="t">{{ t }}</span>
       </div>
     </div>
-    <div class="row-actions">
+  </section>
+  <PageActions>
+      <template v-if="chapter && editing">
+        <span class="save-status" role="status">{{ saveStatus }}</span>
+        <button class="button small primary" :disabled="blocked || !dirty" @click="save()">保存</button>
+      </template>
       <button
         class="button small secondary"
         :disabled="blocked"
@@ -510,8 +513,7 @@ onUnmounted(() => {
       >
         <Icon name="trash" />
       </button>
-    </div>
-  </section>
+  </PageActions>
   <p v-if="error" class="notice warning" role="alert">{{ error }}</p>
   <div class="novel-layout">
     <aside class="chapter-panel panel">
@@ -612,17 +614,7 @@ onUnmounted(() => {
               编辑
             </button>
           </SegmentedControl>
-          <template v-if="editing"
-            ><span class="save-status" role="status">{{ saveStatus }}</span
-            ><button
-              class="button small primary"
-              :disabled="blocked || !dirty"
-              @click="save()"
-            >
-              保存
-            </button></template
-          >
-          <div v-else class="font-controls">
+          <div v-if="!editing" class="font-controls">
             <button
               class="icon-button"
               aria-label="缩小字号"

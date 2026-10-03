@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import Icon from "./Icon.vue";
+import PageActions from "./PageActions.vue";
 import SegmentedControl from "./SegmentedControl.vue";
 import EmptyState from "./EmptyState.vue";
 import { useGalleryNavigation } from "./gallery";
@@ -238,7 +239,8 @@ function observePages(restore = true) {
       .getElementById("comic-page-" + target)
       ?.scrollIntoView({ block: "start", behavior: "instant" });
   const visiblePages = new Set<number>();
-  const readingLine = Math.round(window.innerHeight * 0.4);
+  const toolbarBottom = document.querySelector(".toolbar")?.getBoundingClientRect().bottom || 0;
+  const readingLine = Math.min(window.innerHeight - 1, Math.max(Math.round(window.innerHeight * 0.4), Math.ceil(toolbarBottom) + 16));
   readObserver = new IntersectionObserver(
     (entries) => {
       if (detail.value?.id !== id) return;
@@ -518,15 +520,13 @@ onUnmounted(() => {
   <template v-else-if="detail">
     <section class="page-heading reader-heading">
       <div>
-        <a :href="`#/library/${module}`" class="text-link"
-          ><Icon name="chevron-left" />返回{{ name }}</a
-        >
         <h1>{{ detail.name }}</h1>
         <div class="content-tags">
           <span v-for="tag in detail.tags" :key="tag">{{ tag }}</span>
         </div>
       </div>
-      <div class="row-actions">
+    </section>
+    <PageActions>
         <button class="button secondary small" @click="edit(detail)">
           <Icon name="edit" />编辑</button
         ><a
@@ -541,8 +541,7 @@ onUnmounted(() => {
         >
           <Icon name="trash" />
         </button>
-      </div>
-    </section>
+    </PageActions>
     <div class="reader-controls" role="group" aria-label="阅读页码">
       <label>
         <input

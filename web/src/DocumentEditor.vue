@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import Icon from "./Icon.vue";
+import PageActions from "./PageActions.vue";
 import EmptyState from "./EmptyState.vue";
 import ActionConfirm from "./ActionConfirm.vue";
 import SegmentedControl from "./SegmentedControl.vue";
@@ -34,6 +35,12 @@ async function load() {
   try { const document = await api<Document>("/api/documents/" + props.id); if (!stopped) accept(document); }
   catch (e) { if (!stopped) error.value = (e as Error).message; }
   finally { if (!stopped) loading.value = false; }
+}
+async function beginEdit() {
+  editing.value = true; mode.value = "edit";
+  await nextTick();
+  window.scrollTo({ top: 0, behavior: "instant" });
+  nameInput.value?.focus({ preventScroll: true });
 }
 function validate() {
   nameError.value = !name.value.trim() || [...name.value.trim()].length > 160 || /[\0\r\n]/.test(name.value) ? "名称需为 1–160 个字符，不能包含换行" : "";
@@ -122,12 +129,12 @@ onUnmounted(() => {
 <template>
   <ActionConfirm ref="confirmation" />
   <section class="page-heading document-heading">
-    <div><a href="#/library/documents" class="text-link"><Icon name="chevron-left" />文档列表</a><h1>{{ editing ? saved ? '编辑文档' : '新建文档' : saved?.item.name || '文档' }}</h1></div>
-    <div v-if="!loading && (saved || editing)" class="document-actions">
-      <template v-if="editing"><span class="save-status" role="status">{{ saveStatus }}</span><button class="button secondary" :disabled="busy" @click="save(true)">保存并阅读</button><button class="button primary" :disabled="busy" @click="save()"><Icon name="check" />{{ busy ? '保存中…' : '保存' }}</button></template>
-      <template v-else><a :href="'/api/items/' + saved?.item.id + '/download'" class="button secondary"><Icon name="download" />下载 MD</a><button class="button primary" @click="editing = true; mode = 'edit'"><Icon name="edit" />编辑</button><button class="icon-button" aria-label="删除文档" title="移入回收站" :disabled="busy" @click="trash"><Icon name="trash" /></button></template>
-    </div>
+    <div><h1>{{ editing ? saved ? '编辑文档' : '新建文档' : saved?.item.name || '文档' }}</h1></div>
   </section>
+  <PageActions v-if="!loading && (saved || editing)">
+      <template v-if="editing"><span class="save-status" role="status">{{ saveStatus }}</span><button class="button secondary" :disabled="busy" @click="save(true)">保存并阅读</button><button class="button primary" :disabled="busy" @click="save()"><Icon name="check" />{{ busy ? '保存中…' : '保存' }}</button></template>
+      <template v-else><a :href="'/api/items/' + saved?.item.id + '/download'" class="button secondary"><Icon name="download" />下载 MD</a><button class="button primary" @click="beginEdit"><Icon name="edit" />编辑</button><button class="icon-button" aria-label="删除文档" title="移入回收站" :disabled="busy" @click="trash"><Icon name="trash" /></button></template>
+  </PageActions>
   <div v-if="error" class="notice warning" role="alert"><div><strong>{{ error }}</strong><p v-if="editing">草稿已保留。你可以下载草稿，再处理连接或版本问题。</p></div><button v-if="editing" class="button small secondary" @click="downloadDraft">下载草稿</button><button v-else class="button small secondary" :disabled="loading" @click="load">重新读取</button></div>
   <p v-if="conflict && saved" class="subtle-copy">另一处已修改这篇文档。<a :href="'#/library/documents/' + saved.item.id" target="_blank" rel="noopener" class="text-link">在新窗口查看已保存版本</a></p>
   <div v-if="sessionExpired && editing" class="notice warning"><span>登录已过期，请重新登录后保存；当前草稿仍保留。</span><button class="button small secondary" @click="login?.showModal()">重新登录</button></div>

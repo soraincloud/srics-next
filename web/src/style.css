@@ -24,6 +24,9 @@
   --warning: #a05a00;
   --warning-soft: #fff7e7;
   --shadow: 0 18px 58px rgba(20, 24, 33, .05);
+  --app-header-height: 76px;
+  --page-toolbar-height: 64px;
+  --reading-offset: calc(var(--app-header-height) + var(--page-toolbar-height) + 16px);
   color: var(--text);
   background: var(--page);
 }
@@ -97,10 +100,16 @@ svg { width: 20px; height: 20px; flex: none; }
 .local-note svg { width: 13px; height: 13px; }
 .nav-activity { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-left: auto; }
 .workspace { margin-left: 236px; }
-.toolbar { min-height: 51px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 34px; font-size: 12px; }
-.breadcrumb { display: flex; align-items: center; gap: 13px; color: var(--secondary); font-weight: 550; }
-.back-link { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; color: var(--strong); }
+.toolbar { position: sticky; top: var(--app-header-height); z-index: 35; min-height: 64px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 8px 34px; background: var(--page); border-bottom: 1px solid var(--line); font-size: 13px; }
+.breadcrumb { display: flex; align-items: center; gap: 13px; color: var(--secondary); font-weight: 550; min-width: 0; }
+.back-link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--strong); white-space: nowrap; }
 .back-link svg { width: 14px; height: 14px; }
+.toolbar .back-link { border-radius: 999px; padding: 0 12px; margin-left: -12px; transition: background .16s; }
+.toolbar .back-link:hover { background: var(--active); }
+.toolbar-actions { margin-left: auto; min-width: 0; max-width: 100%; }
+.toolbar-actions:empty { display: none; }
+.page-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
+.page-actions .save-status { font-size: 12px; color: var(--secondary); max-width: 220px; overflow-wrap: anywhere; }
 .breadcrumb-divider { color: var(--muted); }
 .toolbar-note { color: var(--muted); font-size: 11px; }
 .connection { display: inline-flex; align-items: center; gap: 8px; color: var(--secondary); font-size: 12px; font-weight: 600; white-space: nowrap; }
@@ -108,6 +117,7 @@ svg { width: 20px; height: 20px; flex: none; }
 .online .connection-dot { background: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 10%, transparent); }
 .offline .connection-dot { background: var(--warning); }
 .main-content { max-width: 1280px; margin: 0 auto; padding: 14px 34px 44px; outline: none; }
+.main-content.document-workspace { max-width: none; padding-top: 24px; }
 .page-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin: 0 0 26px; }
 .eyebrow { color: var(--secondary); font-size: 12px; font-weight: 650; line-height: 1.5; margin-bottom: 7px; }
 h1 { position: relative; display: inline-block; color: var(--strong); font-size: 30px; line-height: 1.25; letter-spacing: -.5px; font-weight: 760; padding-bottom: 12px; }
@@ -281,6 +291,7 @@ progress::-moz-progress-bar { background: var(--strong); border-radius: 6px; }
   .library-note a { margin-left: 0; }
 }
 @media (max-width: 720px) {
+  :root { --app-header-height: calc(64px + env(safe-area-inset-top)); }
   .app-shell { padding-top: calc(64px + env(safe-area-inset-top)); }
   .app-header { height: calc(64px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 20px 0; gap: 14px; }
   .brand { font-size: 21px; gap: 9px; }
@@ -293,7 +304,10 @@ progress::-moz-progress-bar { background: var(--strong); border-radius: 6px; }
   .theme-toggle { width: 38px; height: 38px; }
   .sidebar { display: none; }
   .workspace { margin-left: 0; }
-  .toolbar { min-height: 46px; padding-inline: 22px; font-size: 11px; }
+  .toolbar { min-height: 58px; padding: 6px 22px; font-size: 12px; }
+  .page-actions { gap: 8px; }
+  .page-actions .button { min-height: 40px; padding: 8px 12px; }
+  .page-actions .save-status { max-width: 140px; font-size: 11px; }
   .toolbar-note { font-size: 10px; }
   .main-content { padding: 12px 22px calc(104px + env(safe-area-inset-bottom)); }
   .page-heading { margin-bottom: 22px; gap: 16px; }
@@ -322,6 +336,7 @@ progress::-moz-progress-bar { background: var(--strong); border-radius: 6px; }
 
 }
 @media (max-width: 440px) {
+  body { min-width: 0; }
   .app-header { padding-inline: 18px; }
   .main-content { padding-inline: 18px; }
   .toolbar { padding-inline: 18px; }
@@ -491,14 +506,14 @@ dialog::backdrop { background: rgba(0,0,0,.65); backdrop-filter: blur(6px); }
 .task-row .inline-error { color: var(--red); }
 .save-status { font-size: 12px; color: var(--secondary); line-height: 1.8; }
 .row-actions { display: flex; align-items: center; gap: 9px; }
-.reader-heading h1 { margin-top: 14px; font-size: 28px; }
+.reader-heading h1 { margin-top: 0; font-size: 28px; }
 .reader-controls { position: fixed; right: 28px; bottom: 24px; z-index: 10; padding: 5px 13px 5px 5px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); box-shadow: 0 4px 18px rgb(0 0 0 / 12%); }
 .reader-controls label { display: flex; align-items: center; gap: 7px; white-space: nowrap; font-size: 12px; color: var(--secondary); }
 .reader-controls input[type="number"] { width: 60px; padding: 8px 4px; border: 0; border-radius: 999px; outline: 3px solid var(--line-strong); outline-offset: 2px; background: transparent; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield; }
 .reader-controls input[type="number"]:focus { outline-color: var(--accent); }
 .reader-controls input::-webkit-inner-spin-button, .reader-controls input::-webkit-outer-spin-button { appearance: none; margin: 0; }
 .continuous-reader { width: 100%; max-width: 1000px; margin: 0 auto; }
-.comic-page { position: relative; margin: 0; padding: 0; border: 0; scroll-margin-top: 100px; }
+.comic-page { position: relative; margin: 0; padding: 0; border: 0; scroll-margin-top: var(--reading-offset); }
 .comic-page img { display: block; width: 100%; height: auto; aspect-ratio: auto 3 / 4; margin: 0; padding: 0; border: 0; background: var(--surface); }
 .image-viewer { width: min(1200px,calc(100% - 24px)); }
 .viewer-image { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -538,9 +553,7 @@ dialog::backdrop { background: rgba(0,0,0,.65); backdrop-filter: blur(6px); }
 .document-card-footer svg { width: 17px; }
 .document-heading { align-items: center; gap: 20px; flex-wrap: wrap; }
 .document-heading > div:first-child { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; flex: 1; }
-.document-heading h1 { margin-top: 14px; overflow-wrap: anywhere; max-width: 100%; }
-.document-heading .text-link { font-size: 12px; min-height: 20px; }
-.document-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.document-heading h1 { margin-top: 0; overflow-wrap: anywhere; max-width: 100%; }
 .document-editor-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
 .document-metadata { padding: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .document-metadata label { display: block; margin-bottom: 10px; }
@@ -552,11 +565,12 @@ dialog::backdrop { background: rgba(0,0,0,.65); backdrop-filter: blur(6px); }
 .document-editor-fields:disabled { opacity: .7; }
 .document-editor-footer { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
 .document-editor-footer button { border: 0; background: transparent; padding: 0; font-size: 12px; }
-.document-reading-tags { margin: -6px 0 24px; }
-.markdown-content { padding: clamp(24px, 4vw, 52px); border: 2px solid var(--line); min-height: 280px; color: var(--text); font-size: 16px; line-height: 1.9; overflow-wrap: anywhere; }
-.markdown-content > div { max-width: 820px; margin-inline: auto; }
+.document-reading-tags { margin: -6px 0 22px; gap: 8px; }
+.document-reading-tags > span { padding: 6px 14px; border: 2px solid var(--line-strong); background: var(--surface); color: var(--text); font-size: 13px; line-height: 1.5; font-weight: 600; }
+.markdown-content { padding: 24px; border: 2px solid var(--line); min-height: 280px; color: var(--text); font-size: 16px; line-height: 1.9; overflow-wrap: anywhere; }
+.markdown-content > div { min-width: 0; }
 .markdown-content p, .markdown-content ul, .markdown-content ol, .markdown-content blockquote, .markdown-content pre, .markdown-content table { margin: 0 0 1.2em; }
-.markdown-content h1, .markdown-content h2, .markdown-content h3, .markdown-content h4, .markdown-content h5, .markdown-content h6 { line-height: 1.4; margin: 1.5em 0 .7em; scroll-margin-top: 100px; }
+.markdown-content h1, .markdown-content h2, .markdown-content h3, .markdown-content h4, .markdown-content h5, .markdown-content h6 { line-height: 1.4; margin: 1.5em 0 .7em; scroll-margin-top: var(--reading-offset); }
 .markdown-content h1 { display: block; padding-bottom: 0; font-size: 1.9em; }
 .markdown-content h1::after { content: none; }
 .markdown-content h2 { font-size: 1.5em; }
@@ -576,7 +590,7 @@ dialog::backdrop { background: rgba(0,0,0,.65); backdrop-filter: blur(6px); }
 .markdown-content th { background: var(--surface-soft); text-align: left; }
 .markdown-content hr { border: 0; border-top: 2px solid var(--line); margin: 2em 0; }
 .document-blank { text-align: center; color: var(--secondary); padding-block: 60px; font-size: 14px; }
-@media (max-width: 720px) { .document-metadata { grid-template-columns: 1fr; padding: 22px; } .document-actions { gap: 8px; width: 100%; } .document-actions .save-status { flex-basis: 100%; } .document-source { padding: 20px; font-size: 14px; } .document-edit-toolbar { flex-wrap: wrap; } .markdown-content { font-size: 15px; } }
+@media (max-width: 720px) { .document-metadata { grid-template-columns: 1fr; padding: 22px; } .document-source { padding: 20px; font-size: 14px; } .document-edit-toolbar { flex-wrap: wrap; } .markdown-content { padding: 20px; font-size: 15px; } }
 
 .novel-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 18px; }
 .novel-card { display: flex; flex-direction: column; align-items: flex-start; padding: 24px; min-height: 220px; border: 2px solid var(--line); transition: border-color .15s; }
@@ -587,7 +601,7 @@ dialog::backdrop { background: rgba(0,0,0,.65); backdrop-filter: blur(6px); }
 .novel-card-footer svg { width: 17px; }
 .novel-more { margin-top: 24px; }
 .novel-layout { display: grid; grid-template-columns: minmax(210px,260px) minmax(0,1fr); gap: 22px; align-items: start; }
-.chapter-panel { padding: 20px 14px; position: sticky; top: 98px; }
+.chapter-panel { padding: 20px 14px; position: sticky; top: var(--reading-offset); }
 .chapter-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 6px; }
 .chapter-heading h2 { font-size: 16px; }
 .chapter-tabs { margin: 18px 0 12px; }
@@ -602,9 +616,8 @@ dialog::backdrop { background: rgba(0,0,0,.65); backdrop-filter: blur(6px); }
 .chapter-order button:hover { background: var(--active); }
 .chapter-empty { padding: 20px 8px; font-size: 12px; color: var(--muted); }
 .deleted-chapter { flex: 1; min-width: 0; padding: 13px 10px; font-size: 13px; overflow-wrap: anywhere; }
-.novel-content { min-width: 0; padding: 24px 30px; scroll-margin-top: 98px; }
+.novel-content { min-width: 0; padding: 24px 30px; scroll-margin-top: var(--reading-offset); }
 .novel-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 24px; }
-.novel-toolbar .save-status { margin-left: auto; }
 .font-controls { display: flex; align-items: center; gap: 8px; margin-left: auto; font-size: 12px; color: var(--secondary); }
 .font-controls button { font-size: 12px; }
 .novel-prose { margin: 36px auto 48px; max-width: 44em; line-height: 2; overflow-wrap: anywhere; }
@@ -645,7 +658,6 @@ dialog::backdrop { background: rgba(0,0,0,.65); backdrop-filter: blur(6px); }
  .reader-heading .row-actions { flex-wrap: wrap; }
  .novel-toolbar { gap: 8px; }
  .novel-toolbar .segmented button { padding: 9px 12px; }
- .novel-toolbar .save-status { font-size: 11px; }
 }
 .discard-message { margin: 22px 0; color: var(--secondary); font-size: 14px; line-height: 1.8; }
 .novel-heading > div:first-child { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
