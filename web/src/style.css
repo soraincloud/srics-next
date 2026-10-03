@@ -26,6 +26,8 @@
   --shadow: 0 18px 58px rgba(20, 24, 33, .05);
   --app-header-height: 76px;
   --page-toolbar-height: 64px;
+  --content-max-width: 1280px;
+  --content-gutter: 34px;
   --reading-offset: calc(var(--app-header-height) + var(--page-toolbar-height) + 16px);
   color: var(--text);
   background: var(--page);
@@ -100,7 +102,7 @@ svg { width: 20px; height: 20px; flex: none; }
 .local-note svg { width: 13px; height: 13px; }
 .nav-activity { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-left: auto; }
 .workspace { margin-left: 236px; }
-.toolbar { position: sticky; top: var(--app-header-height); z-index: 35; min-height: 64px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 8px 34px; background: var(--page); border-bottom: 1px solid var(--line); font-size: 13px; }
+.toolbar { position: sticky; top: var(--app-header-height); z-index: 35; min-height: 64px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 8px max(var(--content-gutter), calc((100% - var(--content-max-width)) / 2 + var(--content-gutter))); background: var(--page); border-bottom: 1px solid var(--line); font-size: 13px; }
 .breadcrumb { display: flex; align-items: center; gap: 13px; color: var(--secondary); font-weight: 550; min-width: 0; }
 .back-link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--strong); white-space: nowrap; }
 .back-link svg { width: 14px; height: 14px; }
@@ -116,8 +118,8 @@ svg { width: 20px; height: 20px; flex: none; }
 .connection-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
 .online .connection-dot { background: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 10%, transparent); }
 .offline .connection-dot { background: var(--warning); }
-.main-content { max-width: 1280px; margin: 0 auto; padding: 14px 34px 44px; outline: none; }
-.main-content.document-workspace { max-width: none; padding-top: 24px; }
+.main-content { width: 100%; max-width: var(--content-max-width); margin: 0 auto; padding: 14px var(--content-gutter) 44px; outline: none; }
+.main-content.document-workspace { padding-top: 24px; }
 .page-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin: 0 0 26px; }
 .eyebrow { color: var(--secondary); font-size: 12px; font-weight: 650; line-height: 1.5; margin-bottom: 7px; }
 h1 { position: relative; display: inline-block; color: var(--strong); font-size: 30px; line-height: 1.25; letter-spacing: -.5px; font-weight: 760; padding-bottom: 12px; }
@@ -271,10 +273,9 @@ progress::-moz-progress-bar { background: var(--strong); border-radius: 6px; }
   .nav-label { margin-top: 14px; }
 }
 @media (max-width: 1100px) {
+  :root { --content-gutter: 26px; }
   .sidebar { width: 214px; padding-inline: 12px; }
   .workspace { margin-left: 214px; }
-  .main-content { padding-inline: 26px; }
-  .toolbar { padding-inline: 26px; }
   .library-grid { gap: 13px; }
   .library-card { padding: 18px 17px 14px; }
   .card-description { min-height: 42px; }
@@ -291,6 +292,7 @@ progress::-moz-progress-bar { background: var(--strong); border-radius: 6px; }
   .library-note a { margin-left: 0; }
 }
 @media (max-width: 720px) {
+  :root { --content-gutter: 22px; }
   :root { --app-header-height: calc(64px + env(safe-area-inset-top)); }
   .app-shell { padding-top: calc(64px + env(safe-area-inset-top)); }
   .app-header { height: calc(64px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 20px 0; gap: 14px; }
@@ -304,12 +306,12 @@ progress::-moz-progress-bar { background: var(--strong); border-radius: 6px; }
   .theme-toggle { width: 38px; height: 38px; }
   .sidebar { display: none; }
   .workspace { margin-left: 0; }
-  .toolbar { min-height: 58px; padding: 6px 22px; font-size: 12px; }
+  .toolbar { min-height: 58px; padding-block: 6px; font-size: 12px; }
   .page-actions { gap: 8px; }
   .page-actions .button { min-height: 40px; padding: 8px 12px; }
   .page-actions .save-status { max-width: 140px; font-size: 11px; }
   .toolbar-note { font-size: 10px; }
-  .main-content { padding: 12px 22px calc(104px + env(safe-area-inset-bottom)); }
+  .main-content { padding-block: 12px calc(104px + env(safe-area-inset-bottom)); }
   .page-heading { margin-bottom: 22px; gap: 16px; }
   h1 { font-size: 27px; }
   .subtitle { font-size: 12px; }
@@ -336,10 +338,9 @@ progress::-moz-progress-bar { background: var(--strong); border-radius: 6px; }
 
 }
 @media (max-width: 440px) {
+  :root { --content-gutter: 18px; }
   body { min-width: 0; }
   .app-header { padding-inline: 18px; }
-  .main-content { padding-inline: 18px; }
-  .toolbar { padding-inline: 18px; }
   .header-actions { gap: 10px; }
   .connection { font-size: 9px; }
   .brand-next { display: none; }
@@ -513,7 +514,7 @@ dialog::backdrop { background: rgba(0,0,0,.65); backdrop-filter: blur(6px); }
 .reader-controls input[type="number"] { width: 60px; padding: 8px 4px; border: 0; border-radius: 999px; outline: 3px solid var(--line-strong); outline-offset: 2px; background: transparent; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield; }
 .reader-controls input[type="number"]:focus { outline-color: var(--accent); }
 .reader-controls input::-webkit-inner-spin-button, .reader-controls input::-webkit-outer-spin-button { appearance: none; margin: 0; }
-.continuous-reader { width: 100%; max-width: 1000px; margin: 0 auto; }
+.continuous-reader { width: 100%; }
 .comic-page { position: relative; margin: 0; padding: 0; border: 0; scroll-margin-top: var(--reading-offset); }
 .comic-page img { display: block; width: 100%; height: auto; aspect-ratio: auto 3 / 4; margin: 0; padding: 0; border: 0; background: var(--surface); }
 .image-viewer { width: min(1200px,calc(100% - 24px)); }
@@ -621,7 +622,7 @@ dialog::backdrop { background: rgba(0,0,0,.65); backdrop-filter: blur(6px); }
 .novel-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 24px; }
 .font-controls { display: flex; align-items: center; gap: 8px; margin-left: auto; font-size: 12px; color: var(--secondary); }
 .font-controls button { font-size: 12px; }
-.novel-prose { margin: 36px auto 48px; max-width: 44em; line-height: 2; overflow-wrap: anywhere; }
+.novel-prose { margin: 36px 0 48px; line-height: 2; overflow-wrap: anywhere; }
 .novel-prose h2 { margin-bottom: 28px; font-size: 1.4em; line-height: 1.6; }
 .novel-prose > div { white-space: pre-wrap; tab-size: 4; }
 .chapter-editor textarea { width: 100%; min-height: 52dvh; resize: vertical; border: 2px solid var(--line-strong); border-radius: 12px; padding: 18px; background: var(--surface); font-size: 16px; line-height: 1.9; font-weight: 400; }
