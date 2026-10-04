@@ -16,12 +16,20 @@ import {
 const props = defineProps<{ module: string }>();
 const dialog = ref<HTMLDialogElement>(),
   input = ref<HTMLInputElement>(),
+  picker = ref<HTMLButtonElement>(),
   selected = ref<File[]>([]),
   name = ref(""),
   tags = ref(""),
   error = ref(""),
   working = ref(false),
   resume = ref<Upload>();
+const pickerLabel = computed(() =>
+  props.module === "comics"
+    ? batchComic.value ? "选择漫画总目录" : "选择漫画文件夹"
+    : props.module === "attachments"
+      ? "选择一个或多个文件"
+      : "选择一张或多张图片",
+);
 const batchIDs = ref<string[]>([]),
   batchComic = ref(false),
   batchNames = ref<Record<string, string>>({});
@@ -85,7 +93,15 @@ async function open(task?: Upload) {
   // Reset the native selection too, so choosing the same source again emits
   // a change after reopening or when resuming a paused task.
   if (input.value) input.value.value = "";
-  input.value?.focus();
+  picker.value?.focus();
+}
+function selectFiles() {
+  // Clearing the native value permits reselecting the same files. The visible
+  // selection remains intact if the system chooser is cancelled.
+  if (input.value) {
+    input.value.value = "";
+    input.value.click();
+  }
 }
 async function start() {
   if (working.value || !selected.value.length || invalid.value.length) return;
@@ -229,26 +245,32 @@ defineExpose({ open: () => open() });
           :disabled="working || !!selected.length"
         />批量导入多个漫画文件夹（选择它们的共同上级目录）</label
       >
-      <label class="file-picker"
-        ><Icon :name="module === 'comics' || module === 'attachments' ? 'folder' : 'image'" /><strong>{{
-          module === "comics"
-            ? batchComic
-              ? "选择漫画总目录"
-              : "选择漫画文件夹"
-            : module === "attachments" ? "选择一个或多个文件" : "选择一张或多张图片"
-        }}</strong
-        ><span
-          >{{
+      <button
+        ref="picker"
+        type="button"
+        class="file-picker"
+        :disabled="working"
+        @click="selectFiles"
+      >
+        <Icon :name="module === 'comics' || module === 'attachments' ? 'folder' : 'image'" />
+        <strong>{{ selected.length ? `重新${pickerLabel}` : pickerLabel }}</strong>
+        <span v-if="selected.length" class="selection-summary" role="status">
+          已选择 {{ selected.length }} 个文件 ·
+          {{ fileSize(selected.reduce((n, f) => n + f.size, 0)) }}
+        </span>
+        <span v-else>{{
             module === "comics"
               ? batchComic
                 ? "选择包含各本漫画文件夹的总目录，页序按数字排列"
                 : "一层图片目录，页序按文件名中的数字排列"
               : "保留原始文件及元数据"
           }}
-          · 单文件最多 {{ module === 'attachments' ? '10 GiB' : '64 MiB' }}</span
-        ><input
+          · 单文件最多 {{ module === 'attachments' ? '10 GiB' : '64 MiB' }}</span>
+      </button>
+      <input
           ref="input"
           type="file"
+          hidden
           :webkitdirectory="module === 'comics' || undefined"
           multiple
           :accept="
@@ -258,12 +280,8 @@ defineExpose({ open: () => open() });
           "
           :disabled="working"
           @change="choose"
-      /></label>
+      />
       <template v-if="selected.length">
-        <p class="selection-summary">
-          已选择 {{ selected.length }} 个文件 ·
-          {{ fileSize(selected.reduce((n, f) => n + f.size, 0)) }}
-        </p>
         <div v-if="invalid.length" class="notice warning">
           <div>
             <strong>这些文件需要处理</strong>
