@@ -64,6 +64,7 @@ const names: Record<string, string> = {
   documents: "文档",
   images: "图片",
   photos: "个人照片",
+  attachments: "文件",
 };
 let timer: ReturnType<typeof setTimeout> | undefined,
   stopped = false,

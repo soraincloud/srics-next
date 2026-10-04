@@ -39,8 +39,8 @@ const groups = computed(() => {
 const invalid = computed(() =>
   selected.value.filter(
     (f) =>
-      f.size === 0 ||
-      f.size > 64 * 1024 * 1024 ||
+      (f.size === 0 && props.module !== "attachments") ||
+      f.size > (props.module === "attachments" ? 10 * 1024 ** 3 : 64 * 1024 ** 2) ||
       (props.module === "comics" &&
         ((batchComic.value
           ? f.webkitRelativePath.split("/").length !== 3
@@ -58,7 +58,7 @@ function choose(event: Event) {
   batchIDs.value = [];
   const files = Array.from(
     (event.target as HTMLInputElement).files || [],
-  ).filter((f) => !f.name.startsWith("."));
+  ).filter((f) => props.module === "attachments" || !f.name.startsWith("."));
   selected.value = files.sort(
     (a, b) =>
       a.name.localeCompare(b.name, "en", { numeric: true }) ||
@@ -66,7 +66,7 @@ function choose(event: Event) {
   );
   if (!resume.value)
     name.value =
-      files[0]?.webkitRelativePath.split("/")[0] || files[0]?.name || "";
+      (files[0]?.webkitRelativePath.split("/")[0] || files[0]?.name || "").slice(0, 160);
   batchNames.value = Object.fromEntries(
     groups.value.map((g) => [g.key, g.key]),
   );
@@ -82,6 +82,9 @@ async function open(task?: Upload) {
   error.value = "";
   dialog.value?.showModal();
   await nextTick();
+  // Reset the native selection too, so choosing the same source again emits
+  // a change after reopening or when resuming a paused task.
+  if (input.value) input.value.value = "";
   input.value?.focus();
 }
 async function start() {
@@ -107,7 +110,7 @@ async function start() {
               ? batchComic.value
                 ? batchNames.value[group.key] || group.key
                 : name.value
-              : group.key,
+              : props.module === "attachments" && batches.length === 1 ? name.value : group.key.slice(0, 160),
             props.module === "comics"
               ? tags.value
                   .split(/[,，]/)
@@ -145,7 +148,7 @@ defineExpose({ open: () => open() });
 <template>
   <div class="upload-actions">
     <button class="button primary" @click="open()">
-      <Icon name="upload" />{{ module === "comics" ? "导入漫画" : module === "photos" ? "上传照片" : "上传图片" }}
+      <Icon name="upload" />{{ module === "comics" ? "导入漫画" : module === "attachments" ? "上传文件" : module === "photos" ? "上传照片" : "上传图片" }}
     </button>
   </div>
   <section
@@ -201,6 +204,8 @@ defineExpose({ open: () => open() });
               ? batchComic
                 ? "批量导入漫画"
                 : "导入一本漫画"
+              : module === "attachments"
+                ? "上传文件"
               : module === "photos"
                 ? "保存照片原件"
                 : "上传图片"
@@ -225,12 +230,12 @@ defineExpose({ open: () => open() });
         />批量导入多个漫画文件夹（选择它们的共同上级目录）</label
       >
       <label class="file-picker"
-        ><Icon :name="module === 'comics' ? 'folder' : 'image'" /><strong>{{
+        ><Icon :name="module === 'comics' || module === 'attachments' ? 'folder' : 'image'" /><strong>{{
           module === "comics"
             ? batchComic
               ? "选择漫画总目录"
               : "选择漫画文件夹"
-            : "选择一张或多张图片"
+            : module === "attachments" ? "选择一个或多个文件" : "选择一张或多张图片"
         }}</strong
         ><span
           >{{
@@ -240,14 +245,14 @@ defineExpose({ open: () => open() });
                 : "一层图片目录，页序按文件名中的数字排列"
               : "保留原始文件及元数据"
           }}
-          · 单文件最多 64 MB</span
+          · 单文件最多 {{ module === 'attachments' ? '10 GiB' : '64 MiB' }}</span
         ><input
           ref="input"
           type="file"
           :webkitdirectory="module === 'comics' || undefined"
           multiple
           :accept="
-            module === 'comics' || module === 'photos'
+            module === 'comics' || module === 'photos' || module === 'attachments'
               ? undefined
               : 'image/jpeg,image/png,image/webp,image/gif'
           "
@@ -268,8 +273,7 @@ defineExpose({ open: () => open() });
               </li>
             </ul>
             <p>
-              请检查目录层级、空文件、超大文件或格式。批量模式只接受“总目录 /
-              漫画目录 / 图片”三层结构。
+              {{ module === 'attachments' ? '请检查文件大小，单文件最多 10 GiB。' : module === 'comics' ? '请检查目录层级、空文件、超大文件或格式。批量模式只接受“总目录 / 漫画目录 / 图片”三层结构。' : '请检查空文件、超大文件或格式，单文件最多 64 MiB。' }}
             </p>
             <button
               v-if="!resume"
@@ -314,6 +318,9 @@ defineExpose({ open: () => open() });
           </details></template
         >
       </template>
+      <label v-if="module === 'attachments' && selected.length === 1 && !resume">
+        文件名称<input v-model="name" required maxlength="160" :disabled="working || !!batchIDs.length" />
+      </label>
       <p v-if="error" class="inline-error" role="alert">{{ error }}</p>
       <p v-if="working" class="save-status" aria-live="polite">
         {{ uploadProgress || "正在准备上传…" }}。分块进度已保存，刷新后可继续。

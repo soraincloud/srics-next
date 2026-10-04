@@ -72,8 +72,20 @@ func (up Upload) validate() error {
 	if up.State != "pending" && up.State != "failed" && up.State != "complete" && up.State != "cancelled" {
 		return errors.New("上传状态损坏，已停止清理，请从备份恢复")
 	}
+	if up.Module == "attachments" {
+		if len(up.Files) != 1 || len(up.Tags) != 0 || up.Files[0].Size < 0 || up.Files[0].Size > MaxOrdinaryFile {
+			return errors.New("普通文件上传索引损坏，已停止清理")
+		}
+		f := up.Files[0]
+		if f.Page != nil && (f.Page.Size != f.Size || f.Page.MIME != "application/octet-stream" || f.Page.Thumb != "") {
+			return errors.New("普通文件原件引用损坏，已停止清理")
+		}
+	}
 	for _, f := range up.Files {
 		if f.Page != nil {
+			if f.Page.Size == 0 && up.Module != "attachments" {
+				return errors.New("上传原件为空，已停止清理")
+			}
 			if err := f.Page.validate(); err != nil {
 				return err
 			}
@@ -110,11 +122,18 @@ func (l *Library) CreateUpload(up Upload) (Upload, error) {
 		return up, err
 	}
 	if up.Module != "comics" && (len(up.Files) != 1 || len(up.Tags) != 0) {
-		return up, errors.New("图片和个人照片以每个原文件建立独立任务")
+		return up, errors.New("每个文件需要独立上传，只有漫画支持多页与标签")
+	}
+	limit := int64(MaxFile)
+	if up.Module == "attachments" {
+		limit = MaxOrdinaryFile
 	}
 	names := map[string]bool{}
 	for i, f := range up.Files {
-		if f.Name == "" || f.Name != path.Base(f.Name) || strings.ContainsAny(f.Name, "\\\x00\r\n") || len(f.Name) > 512 || f.Size < 1 || f.Size > MaxFile || names[f.Name] || strings.HasPrefix(f.Name, ".") {
+		if f.Name == "" || f.Name == "." || f.Name == ".." || f.Name != path.Base(f.Name) || strings.ContainsAny(f.Name, "\\\x00\r\n") || len(f.Name) > 512 || f.Size < 0 || (f.Size == 0 && up.Module != "attachments") || f.Size > limit || names[f.Name] || (strings.HasPrefix(f.Name, ".") && up.Module != "attachments") {
+			if up.Module == "attachments" {
+				return up, errors.New("文件名无效或大小超过 10 GiB")
+			}
 			return up, errors.New("文件名、层级或大小不受支持；单文件上限 64 MiB，同一本不能有重名页面")
 		}
 		names[f.Name] = true
@@ -180,6 +199,15 @@ func (l *Library) Receive(ctx context.Context, id string, index int, sourceHash 
 		up.Error = f.Name + "：" + e.Error()
 		_ = l.saveUpload(up)
 		return up, e
+	}
+	if up.Module == "attachments" {
+		p, e := l.receiveFile(ctx, *f, sourceHash, src)
+		if e != nil {
+			return failed(e)
+		}
+		f.Page, f.SourceHash = &p, sourceHash
+		up.Error, up.State = "", "pending"
+		return up, l.saveUpload(up)
 	}
 	if err = l.NeedSpace(f.Size * 5); err != nil {
 		return failed(err)

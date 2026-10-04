@@ -2,6 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {chunkSize,prepareTransfer,sendTransfer,transferID} from '../src/transfers.ts';
 import type {api} from '../src/api.ts';
+test('ordinary empty files finish through the authenticated public namespace without vault or chunks', async()=>{
+ const calls:string[]=[];
+ const request=(async(path:string,options:RequestInit)=>{
+  calls.push(path);
+  if(path==='/api/transfers') {
+   const task=JSON.parse(options.body as string);
+   assert.equal(task.module,'attachments'); assert.equal(task.size,0); assert.deepEqual(task.hashes,[]);
+   return {...task,done:[],state:'pending'};
+  }
+  return {ok:true};
+ }) as typeof api;
+ await sendTransfer(new File([],'empty.txt'),{id:'ordinary',module:'attachments',parent:'parent',index:0},request,new AbortController().signal,()=>{});
+ assert.deepEqual(calls,['/api/transfers','/api/transfers/ordinary/finish']);
+});
 test('resume hashes the source and sends only unacknowledged chunks',async()=>{
  const file=new File([new Uint8Array(chunkSize),new Uint8Array([9,8,7])],'resume.bin');
  const calls:{path:string;options:RequestInit}[]=[];

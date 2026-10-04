@@ -20,23 +20,26 @@ func validHash(hash string) bool {
 func (p Page) validate() error {
 	// Lossless WebP can be larger than the uploaded JPEG; do not apply the
 	// upload size limit to already-published originals.
-	if p.Name == "" || !IDPattern.MatchString(p.Object) || p.Size < 0 || (p.Size == 0 && p.MIME != "text/markdown") || p.Size == math.MaxInt64 || !validHash(p.SHA256) || (p.Thumb != "" && !IDPattern.MatchString(p.Thumb)) {
+	if p.Name == "" || !IDPattern.MatchString(p.Object) || p.Size < 0 || p.Size == math.MaxInt64 || !validHash(p.SHA256) || (p.Thumb != "" && !IDPattern.MatchString(p.Thumb)) {
 		return errors.New("文件索引损坏，已停止读取和清理，请从备份恢复")
 	}
 	return nil
 }
 
 func (it Item) validate() error {
-	if !IDPattern.MatchString(it.ID) || !ValidModule(it.Module) || it.Revision < 1 || (it.Module == "novels" && len(it.Pages) != 0) || (it.Module == "comics" && (len(it.Pages) < 1 || len(it.Pages) > 3000)) || ((it.Module == "images" || it.Module == "photos") && len(it.Pages) != 1) {
+	if !IDPattern.MatchString(it.ID) || !ValidModule(it.Module) || it.Revision < 1 || (it.Module == "novels" && len(it.Pages) != 0) || (it.Module == "comics" && (len(it.Pages) < 1 || len(it.Pages) > 3000)) || ((it.Module == "images" || it.Module == "photos" || it.Module == "attachments") && len(it.Pages) != 1) {
 		return errors.New("资料索引损坏，已停止读取和清理，请从备份恢复")
 	}
 	for _, p := range it.Pages {
 		if err := p.validate(); err != nil {
 			return err
 		}
-		if p.Size == 0 && it.Module != "documents" {
+		if p.Size == 0 && it.Module != "documents" && it.Module != "attachments" {
 			return errors.New("原件为空，请从备份恢复")
 		}
+	}
+	if it.Module == "attachments" && (len(it.Tags) != 0 || it.Pages[0].MIME != "application/octet-stream" || it.Pages[0].Thumb != "" || it.Pages[0].Size > MaxOrdinaryFile) {
+		return errors.New("文件索引损坏，请从备份恢复")
 	}
 	if it.Module == "documents" && (len(it.Pages) != 1 || it.Pages[0].MIME != "text/markdown" || it.Pages[0].Size > MaxDocumentBody || it.Pages[0].Thumb != "") {
 		return errors.New("文档索引损坏，请从备份恢复")

@@ -276,7 +276,7 @@ func (a *LibraryAPI) handle(w http.ResponseWriter, r *http.Request) {
 			apiError(w, 400, errors.New("无效文件序号"))
 			return
 		}
-		r.Body = http.MaxBytesReader(w, r.Body, library.MaxFile+1)
+		r.Body = http.MaxBytesReader(w, r.Body, library.MaxOrdinaryFile+1)
 		result, err = a.store.Receive(r.Context(), parts[2], index, r.Header.Get("X-File-SHA256"), r.Body, a.converter)
 	case len(parts) >= 3 && parts[1] == "items":
 		id := parts[2]
@@ -430,7 +430,7 @@ func (a *LibraryAPI) list(r *http.Request) (any, error) {
 		if it.Seq > snapshot {
 			continue
 		}
-		if module == "comics" || module == "novels" || module == "documents" {
+		if module == "comics" || module == "novels" || module == "documents" || module == "attachments" {
 			if !strings.Contains(strings.ToLower(it.Name), name) {
 				continue
 			}
@@ -490,7 +490,9 @@ func safeName(name string) string {
 		}
 		return r
 	}, name)
-	name = strings.Trim(name, " .")
+	// Preserve useful hidden-file names such as .env. A filename consisting
+	// only of dots still becomes a safe fallback; trailing dots are removed.
+	name = strings.TrimRight(strings.TrimSpace(name), " .")
 	if name == "" {
 		name = "download"
 	}
@@ -580,14 +582,18 @@ func (a *LibraryAPI) downloadBatch(w http.ResponseWriter, r *http.Request) {
 	module := ""
 	for _, id := range ids {
 		it, err := a.store.Item(id)
-		if err != nil || it.Deleted != "" || (it.Module != "images" && it.Module != "photos") || (module != "" && it.Module != module) {
-			apiError(w, 400, errors.New("请选择同一空间内的有效图片"))
+		if err != nil || it.Deleted != "" || (it.Module != "images" && it.Module != "photos" && it.Module != "attachments") || (module != "" && it.Module != module) {
+			apiError(w, 400, errors.New("请选择同一空间内的有效文件"))
 			return
 		}
 		module = it.Module
 		items = append(items, it)
 	}
-	a.zip(w, r, items, "SRICS-图片.zip")
+	name := "SRICS-图片.zip"
+	if module == "attachments" {
+		name = "SRICS-文件.zip"
+	}
+	a.zip(w, r, items, name)
 }
 func (a *LibraryAPI) zip(w http.ResponseWriter, r *http.Request, items []library.Item, name string) {
 	// Check all references before sending headers; streamed archives never create

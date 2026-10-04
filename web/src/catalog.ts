@@ -20,6 +20,10 @@ export const modules = [
     sub: "原件上传、备份与下载。", kind: "原件 · 照片备份",
   },
   {
+    id: "attachments", name: "文件", icon: "folder", color: "indigo",
+    sub: "保存普通文件，按名称查找与下载。", kind: "原件 · 名称搜索",
+  },
+  {
     id: "private", name: "私密照片", icon: "lock", color: "purple",
     sub: "独立解锁、列表与随机浏览。", kind: "加密 · 随机浏览",
   },

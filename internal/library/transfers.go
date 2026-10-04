@@ -190,6 +190,9 @@ func (l *Library) CreateTransfer(ctx context.Context, t Transfer, a *vault.Acces
 	if t.Module == "files" {
 		limit = MaxPrivateFile
 	}
+	if t.Module == "attachments" {
+		limit = MaxOrdinaryFile
+	}
 	if t.Size > limit || len(t.Hashes) != int((t.Size+ChunkSize-1)/ChunkSize) {
 		return t, errors.New("上传大小或分块数量不正确")
 	}

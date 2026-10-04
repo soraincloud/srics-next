@@ -54,6 +54,7 @@ let generation = 0,
   readObserver: IntersectionObserver | undefined;
 const backupSavedAt = ref("");
 const isComic = computed(() => props.module === "comics");
+const isFile = computed(() => props.module === "attachments");
 const { index: viewerIndex, moving: viewerMoving, canNext: viewerCanNext, advance: nextImage } =
   useGalleryNavigation(items, viewing, next, loading, () => load(true));
 const selectedURL = computed(
@@ -160,6 +161,8 @@ async function trash(targets: Item[]) {
       await api(`/api/items/${item.id}`, { method: "DELETE" });
     notice.value = `已将 ${targets.length} 项移到回收站，可随时恢复。`;
     viewer.value?.close();
+    editDialog.value?.close();
+    editing.value = undefined;
     viewing.value = undefined;
     changed();
     if (props.itemId) location.hash = `#/library/${props.module}`;
@@ -270,8 +273,11 @@ function refresh() {
 watch(
   () => [props.module, props.itemId],
   () => {
+    clearTimeout(searchTimer);
     clearTimeout(progressTimer);
     viewer.value?.close();
+    editDialog.value?.close();
+    editing.value = undefined;
     viewing.value = undefined;
     detail.value = undefined;
     items.value = [];
@@ -318,7 +324,7 @@ onUnmounted(() => {
       <p class="subtitle">{{ sub }}</p>
     </div>
     <span class="quiet-badge"
-      >{{ total }} {{ isComic ? "本漫画" : module === "photos" ? "张照片" : "张图片" }}</span
+      >{{ total }} {{ isComic ? "本漫画" : isFile ? "个文件" : module === "photos" ? "张照片" : "张图片" }}</span
     >
   </section>
   <p v-if="notice" class="action-notice" role="status">
@@ -330,12 +336,12 @@ onUnmounted(() => {
   </p>
   <template v-if="!itemId">
     <div class="collection-toolbar">
-      <div v-if="isComic" class="search-field">
+      <div v-if="isComic || isFile" class="search-field">
         <Icon name="search" /><input
           v-model="query"
           type="search"
-          placeholder="搜索漫画名称"
-          aria-label="搜索漫画名称"
+          :placeholder="isFile ? '搜索文件名称' : '搜索漫画名称'"
+          :aria-label="isFile ? '搜索文件名称' : '搜索漫画名称'"
           @input="search"
         />
       </div>
@@ -364,7 +370,7 @@ onUnmounted(() => {
       </button>
       <button v-if="!isComic && items.length" class="button secondary small"
         :aria-pressed="selecting" :disabled="saving || loading" @click="toggleSelectionMode">
-        {{ selecting ? "完成选择" : "选择图片" }}
+        {{ selecting ? "完成选择" : isFile ? "选择文件" : "选择图片" }}
       </button>
       <UploadPanel ref="uploader" :key="module" :module="module" />
     </div>
@@ -404,8 +410,25 @@ onUnmounted(() => {
       ><button class="text-link" :disabled="saving || !selection.length" @click="selection = []; selectionMessage = ''">清空选择</button>
     </div>
     <p v-if="selectionMessage" class="subtle-copy selection-feedback" role="status">{{ selectionMessage }}</p>
+    <div v-if="isFile && items.length" class="panel private-file-list ordinary-file-list" :aria-busy="loading">
+      <article v-for="item in items" :key="item.id" class="private-file-row">
+        <input v-if="selecting" type="checkbox" :checked="selection.includes(item.id)"
+          :disabled="saving" :aria-label="'选择 ' + item.name" @change="toggleSelect(item.id)" />
+        <Icon name="folder" />
+        <div class="private-file-name">
+          <strong>{{ item.name }}</strong>
+          <span v-if="item.name !== item.pages[0]?.name" class="ordinary-file-original">{{ item.pages[0]?.name }}</span>
+          <span>{{ fileSize(item.pages[0]?.size || 0) }} · {{ new Date(item.created).toLocaleDateString('zh-CN') }}</span>
+        </div>
+        <div class="private-file-actions">
+          <button class="icon-button" :disabled="saving" :aria-label="'修改名称 ' + item.name" @click="edit(item)"><Icon name="edit" /></button>
+          <a class="icon-button" :href="`/api/items/${item.id}/download`" :aria-label="'下载 ' + item.name"><Icon name="download" /></a>
+          <button class="icon-button" :disabled="saving" :aria-label="'将 ' + item.name + ' 移到回收站'" @click="trash([item])"><Icon name="trash" /></button>
+        </div>
+      </article>
+    </div>
     <div
-      v-if="items.length"
+      v-else-if="items.length"
       :class="[
         'collection-grid',
         { 'comic-grid': isComic, 'photo-wall': random, 'is-selecting': selecting },
@@ -498,12 +521,12 @@ onUnmounted(() => {
     </div>
     <EmptyState
       v-else-if="!loading && !error"
-      :icon="query || selectedTags.length ? 'search' : isComic ? 'book' : module === 'photos' ? 'camera' : 'image'"
-      :title="query || selectedTags.length ? '没有匹配的漫画' : isComic ? '暂无漫画' : module === 'photos' ? '暂无照片' : '暂无图片'"
-      :description="query || selectedTags.length ? '换个名称或清除筛选后再试。' : isComic ? '导入图片文件夹，按顺序连续阅读。' : module === 'photos' ? '上传后保留照片原件与元数据。' : '上传图片后，可以在这里浏览。'"
+      :icon="query || selectedTags.length ? 'search' : isComic ? 'book' : isFile ? 'folder' : module === 'photos' ? 'camera' : 'image'"
+      :title="query || selectedTags.length ? isFile ? '没有匹配的文件' : '没有匹配的漫画' : isComic ? '暂无漫画' : isFile ? '暂无文件' : module === 'photos' ? '暂无照片' : '暂无图片'"
+      :description="query || selectedTags.length ? '换个名称或清除筛选后再试。' : isComic ? '导入图片文件夹，按顺序连续阅读。' : isFile ? '上传普通文件，保留原件并纳入备份。' : module === 'photos' ? '上传后保留照片原件与元数据。' : '上传图片后，可以在这里浏览。'"
     >
       <button v-if="query || selectedTags.length" class="button secondary small" @click="query = ''; selectedTags = []; load()">清除筛选</button>
-      <button v-else class="button secondary small" @click="uploader?.open()"><Icon name="upload" />{{ isComic ? '导入漫画' : module === 'photos' ? '上传照片' : '上传图片' }}</button>
+      <button v-else class="button secondary small" @click="uploader?.open()"><Icon name="upload" />{{ isComic ? '导入漫画' : isFile ? '上传文件' : module === 'photos' ? '上传照片' : '上传图片' }}</button>
     </EmptyState>
     <div v-if="next" ref="sentinel" class="load-more">
       <button class="button secondary" :disabled="loading" @click="load(true)">
@@ -573,7 +596,7 @@ onUnmounted(() => {
   </template>
   <dialog ref="editDialog" class="edit-dialog">
     <header class="dialog-header">
-      <h2>编辑漫画</h2>
+      <h2>{{ isFile ? '修改文件名称' : '编辑漫画' }}</h2>
       <button
         class="icon-button"
         aria-label="关闭编辑"
@@ -585,7 +608,7 @@ onUnmounted(() => {
     </header>
     <form class="form-stack" @submit.prevent="saveEdit">
       <label>名称<input v-model="editName" required maxlength="160" /></label
-      ><label>标签<input v-model="editTags" placeholder="用逗号分隔" /></label>
+      ><label v-if="!isFile">标签<input v-model="editTags" placeholder="用逗号分隔" /></label>
       <p v-if="error" class="inline-error" role="alert">{{ error }}</p>
       <button class="button primary" :disabled="saving">
         {{ saving ? "正在保存…" : "保存修改" }}

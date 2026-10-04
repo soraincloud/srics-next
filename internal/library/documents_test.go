@@ -183,7 +183,7 @@ func TestDocumentUpgradePreservesVersionFourLibrary(t *testing.T) {
 		t.Fatal("upgrade lost old item", err)
 	}
 	var version int
-	if err = upgraded.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 5 {
+	if err = upgraded.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 6 {
 		t.Fatal("wrong version", version, err)
 	}
 	backups, _ := filepath.Glob(filepath.Join(root, "staging", "before-documents-*.db"))

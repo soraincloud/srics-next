@@ -95,7 +95,7 @@ func NewID() string {
 	return hex.EncodeToString(b)
 }
 func ValidModule(m string) bool {
-	return m == "comics" || m == "images" || m == "photos" || m == "novels" || m == "documents"
+	return m == "comics" || m == "images" || m == "photos" || m == "novels" || m == "documents" || m == "attachments"
 }
 func Create(root string) error {
 	if err := os.Mkdir(root, 0700); err != nil {
@@ -184,7 +184,7 @@ func openLibrary(root string, initialize bool) (*Library, error) {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version > 5 {
+	if version > 6 {
 		return fail(errors.New("数据版本较新，请升级程序后打开"))
 	}
 	if version < 0 || (version == 0 && !initialize) {
@@ -230,6 +230,11 @@ PRAGMA user_version=1;`)
 	}
 	if version < 5 {
 		if err = migrateDocuments(db, root, version > 0); err != nil {
+			return fail(err)
+		}
+	}
+	if version < 6 {
+		if err = migrateFiles(db, root, version > 0); err != nil {
 			return fail(err)
 		}
 	}
@@ -438,7 +443,16 @@ func (l *Library) Update(id, name string, tags []string, revision int) error {
 	if err = l.Check(); err != nil {
 		return err
 	}
-	result, err := l.db.Exec("UPDATE items SET name=?,tags=?,revision=revision+1 WHERE id=? AND module IN ('comics','novels') AND deleted='' AND revision=?", name, string(encoded), id, revision)
+	if len(tags) > 0 {
+		it, e := l.Item(id)
+		if e != nil {
+			return e
+		}
+		if it.Module == "attachments" {
+			return errors.New("普通文件仅按名称整理")
+		}
+	}
+	result, err := l.db.Exec("UPDATE items SET name=?,tags=?,revision=revision+1 WHERE id=? AND module IN ('comics','novels','attachments') AND deleted='' AND revision=?", name, string(encoded), id, revision)
 	if err != nil {
 		return err
 	}

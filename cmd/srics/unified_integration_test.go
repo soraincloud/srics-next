@@ -73,10 +73,13 @@ func TestUnifiedPackageSurvivesTotalMachineLoss(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, module := range []string{"comics", "images", "photos"} {
+	for _, module := range []string{"comics", "images", "photos", "attachments"} {
 		pages := [][]byte{webp}
 		if module == "comics" {
 			pages = append(pages, lossy)
+		}
+		if module == "attachments" {
+			pages = [][]byte{[]byte("普通文件原件\x00\xff\r\n")}
 		}
 		up := library.Upload{ID: library.NewID(), Module: module, Name: "synthetic " + module}
 		for i, p := range pages {
@@ -95,6 +98,17 @@ func TestUnifiedPackageSurvivesTotalMachineLoss(t *testing.T) {
 		}
 		originals[up.ID] = original{module: module, pages: pages}
 	}
+	empty := library.Upload{ID: library.NewID(), Module: "attachments", Name: "空文件", Files: []library.UploadFile{{Name: ".empty-config", Size: 0}}}
+	if _, err = l.CreateUpload(empty); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = l.Receive(ctx, empty.ID, 0, fmt.Sprintf("%x", sha256.Sum256(nil)), bytes.NewReader(nil), media.Converter{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = l.Finish(empty.ID); err != nil {
+		t.Fatal(err)
+	}
+	originals[empty.ID] = original{module: "attachments", pages: [][]byte{nil}}
 	novel, err := l.CreateNovel(library.NewID(), "应急小说", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -382,14 +396,14 @@ func TestUnifiedPackageSurvivesTotalMachineLoss(t *testing.T) {
 		t.Fatal("missing recovery receipt")
 	}
 	items := recoveryCLI(t, ctx, binary, newConfigPath, "recovery-items", r)
-	if len(items.Items) != 7 {
-		t.Fatal("key-only listing did not recover all seven modules")
+	if len(items.Items) != 9 {
+		t.Fatal("key-only listing did not recover all items, including the empty file")
 	}
 	seenModules := map[string]bool{}
 	for _, it := range items.Items {
 		seenModules[it.Module] = true
 	}
-	for _, module := range []string{"comics", "images", "photos", "novels", "documents", "private", "files"} {
+	for _, module := range []string{"comics", "images", "photos", "novels", "documents", "attachments", "private", "files"} {
 		if !seenModules[module] {
 			t.Fatal("missing recovered module", module)
 		}
