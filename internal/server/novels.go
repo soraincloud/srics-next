@@ -34,6 +34,19 @@ func (a *LibraryAPI) novels(w http.ResponseWriter, r *http.Request, p []string) 
 		result, err = a.store.CreateNovel(b.ID, b.Name, b.Tags)
 	case len(p) == 3 && r.Method == "GET":
 		result, err = a.store.Novel(p[2])
+	case len(p) == 4 && p[3] == "status" && r.Method == "PUT":
+		var b struct {
+			Completed *bool `json:"completed"`
+			Revision  int   `json:"revision"`
+		}
+		if !decode(w, r, &b) {
+			return
+		}
+		if b.Completed == nil || b.Revision < 1 {
+			err = errors.New("请提供完结状态和当前小说版本")
+		} else {
+			result, err = a.store.SetNovelCompleted(p[2], *b.Completed, b.Revision)
+		}
 	case len(p) == 4 && p[3] == "chapters" && r.Method == "POST":
 		var b struct {
 			ID       string `json:"id"`
@@ -55,13 +68,11 @@ func (a *LibraryAPI) novels(w http.ResponseWriter, r *http.Request, p []string) 
 		}
 		err = a.store.ReorderChapters(p[2], b.IDs, b.Revision)
 	case len(p) == 4 && p[3] == "progress" && r.Method == "PUT":
-		var b struct {
-			Chapter string `json:"chapter"`
-		}
+		var b library.NovelBookmark
 		if !decode(w, r, &b) {
 			return
 		}
-		err = a.store.NovelProgress(p[2], b.Chapter)
+		err = a.store.SaveNovelBookmark(p[2], b)
 	case len(p) == 5 && p[3] == "chapters" && r.Method == "GET":
 		result, err = a.store.Chapter(p[2], p[4])
 	case len(p) == 5 && p[3] == "chapters" && r.Method == "PUT":

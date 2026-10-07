@@ -167,7 +167,7 @@ func TestDocumentConcurrentSaveCollectionAndPinnedSnapshot(t *testing.T) {
 func TestDocumentUpgradePreservesVersionFourLibrary(t *testing.T) {
 	l := testLibrary(t)
 	it := upload(t, l, "photos", "original.png", fixture(t))
-	if _, err := l.db.Exec("PRAGMA user_version=4"); err != nil {
+	if _, err := l.db.Exec("DROP TABLE novel_state; PRAGMA user_version=4"); err != nil {
 		t.Fatal(err)
 	}
 	root := l.Root
@@ -183,7 +183,7 @@ func TestDocumentUpgradePreservesVersionFourLibrary(t *testing.T) {
 		t.Fatal("upgrade lost old item", err)
 	}
 	var version int
-	if err = upgraded.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 6 {
+	if err = upgraded.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 7 {
 		t.Fatal("wrong version", version, err)
 	}
 	backups, _ := filepath.Glob(filepath.Join(root, "staging", "before-documents-*.db"))

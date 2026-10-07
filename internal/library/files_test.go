@@ -161,7 +161,7 @@ func TestOrdinaryFileEmptyCorruptionAndFailure(t *testing.T) {
 func TestOrdinaryFileUpgradePreservesVersionFiveLibrary(t *testing.T) {
 	l := testLibrary(t)
 	oldItem := upload(t, l, "photos", "original.png", fixture(t))
-	if _, err := l.db.Exec("PRAGMA user_version=5"); err != nil {
+	if _, err := l.db.Exec("DROP TABLE novel_state; PRAGMA user_version=5"); err != nil {
 		t.Fatal(err)
 	}
 	root := l.Root

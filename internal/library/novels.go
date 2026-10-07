@@ -32,10 +32,21 @@ type ChapterVersion struct {
 	Saved    string `json:"saved"`
 }
 type Novel struct {
-	Item     Item      `json:"item"`
-	Chapters []Chapter `json:"chapters"`
-	Trash    []Chapter `json:"trash"`
-	Reading  string    `json:"reading"`
+	Item     Item           `json:"item"`
+	Chapters []Chapter      `json:"chapters"`
+	Trash    []Chapter      `json:"trash"`
+	Reading  string         `json:"reading"`
+	Bookmark *NovelBookmark `json:"bookmark,omitempty"`
+}
+
+// Paragraphs follow the original newline boundaries; fraction is the position
+// within a paragraph, independent of font size and the device's viewport width.
+type NovelBookmark struct {
+	Chapter   string  `json:"chapter"`
+	Paragraph int     `json:"paragraph"`
+	Fraction  float64 `json:"fraction"`
+	Revision  int     `json:"revision"`
+	Updated   string  `json:"updated"`
 }
 
 func migrateNovels(db *sql.DB, root string, existing bool) error {
@@ -150,9 +161,14 @@ func (l *Library) novel(id string) (Novel, error) {
 	if err != nil {
 		return n, err
 	}
-	err = l.db.QueryRow("SELECT chapter_id FROM novel_reading WHERE novel_id=?", id).Scan(&n.Reading)
+	var b NovelBookmark
+	err = l.db.QueryRow(`SELECT r.chapter_id,COALESCE(s.paragraph,0),COALESCE(s.fraction,0),COALESCE(s.reading_revision,0),COALESCE(s.reading_updated,'')
+ FROM novel_reading r LEFT JOIN novel_state s ON s.novel_id=r.novel_id WHERE r.novel_id=?`, id).Scan(&b.Chapter, &b.Paragraph, &b.Fraction, &b.Revision, &b.Updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = nil
+	} else if err == nil {
+		n.Reading = b.Chapter
+		n.Bookmark = &b
 	}
 	return n, err
 }
@@ -455,20 +471,7 @@ func (l *Library) ReorderChapters(novel string, ids []string, revision int) erro
 	return tx.Commit()
 }
 func (l *Library) NovelProgress(novel, id string) error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if err := l.Check(); err != nil {
-		return err
-	}
-	c, err := l.chapter(novel, id)
-	if err != nil {
-		return err
-	}
-	if c.Deleted != "" {
-		return ErrMissing
-	}
-	_, err = l.db.Exec("INSERT INTO novel_reading(novel_id,chapter_id) VALUES(?,?) ON CONFLICT(novel_id) DO UPDATE SET chapter_id=excluded.chapter_id", novel, id)
-	return err
+	return l.SaveNovelBookmark(novel, NovelBookmark{Chapter: id})
 }
 
 // Export to a caller-owned temporary stream without loading all chapter bodies.

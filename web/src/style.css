@@ -602,6 +602,31 @@ dialog::backdrop { background: rgba(0,0,0,.65); backdrop-filter: blur(6px); }
 .novel-card .content-tags { margin-bottom: 20px; }
 .novel-card-footer { display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: auto; color: var(--secondary); font-size: 12px; }
 .novel-card-footer svg { width: 17px; }
+.novel-card-heading { display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px; }
+.novel-status, .novel-status-switch { --novel-status-color: var(--warning); --novel-status-background: var(--warning-soft); color: var(--novel-status-color); border: 2px solid color-mix(in srgb, var(--novel-status-color) 24%, transparent); background: var(--novel-status-background); }
+.novel-status.completed, .novel-status-switch[aria-checked="true"] { --novel-status-color: var(--green); --novel-status-background: var(--green-soft); }
+.novel-status { padding: 6px 12px; border-radius: 999px; font-size: 12px; line-height: 1.4; }
+.novel-status-switch { display: inline-flex; align-items: center; gap: 9px; padding: 7px 12px 7px 7px; border-radius: 999px; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
+.switch-track { display: flex; align-items: center; width: 34px; height: 22px; padding: 3px; border-radius: 999px; background: color-mix(in srgb, var(--novel-status-color) 25%, transparent); transition: background .2s; }
+.switch-track > span { width: 16px; height: 16px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 3px rgb(0 0 0 / 12%); transition: transform .2s; }
+.novel-status-switch[aria-checked="true"] .switch-track { background: var(--novel-status-color); }
+.novel-status-switch[aria-checked="true"] .switch-track > span { transform: translateX(12px); }
+.novel-status-filter { flex-shrink: 0; }
+.novel-status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--warning); flex-shrink: 0; }
+.novel-status-dot.completed { background: var(--green); }
+.novel-list-search { display: flex; align-items: center; gap: 14px; flex: 1; min-width: min(100%, 280px); }
+.novel-list-search .search-field { flex: 1; min-width: 0; width: auto; max-width: 340px; }
+.novel-list-search .subtle-copy { flex: none; white-space: nowrap; }
+.novel-resume { position: fixed; z-index: 12; right: 28px; bottom: 24px; display: flex; align-items: center; gap: 16px; max-width: min(480px, calc(100vw - 32px)); padding: 12px 14px 12px 18px; border: 3px solid var(--line); border-radius: 24px; background: var(--surface); box-shadow: 0 8px 32px rgb(0 0 0 / 10%); }
+.novel-resume > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.novel-resume > div > span { color: var(--secondary); font-size: 11px; }
+.novel-resume strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; max-width: 220px; }
+.novel-resume .button { flex-shrink: 0; }
+.novel-resume .icon-button { flex-shrink: 0; width: 28px; height: 28px; }
+.reading-resume-enter-active, .reading-resume-leave-active { transition: opacity .2s, transform .2s; }
+.reading-resume-enter-from, .reading-resume-leave-to { opacity: 0; transform: translateY(8px); }
+@media (max-width: 720px) { .novel-resume { right: 16px; bottom: calc(86px + env(safe-area-inset-bottom)); gap: 10px; padding: 10px 12px; } .novel-resume strong { max-width: 130px; } }
+@media (prefers-reduced-motion: reduce) { .switch-track, .switch-track > span, .reading-resume-enter-active, .reading-resume-leave-active { transition: none; } }
 .novel-more { margin-top: 24px; }
 .novel-layout { display: grid; grid-template-columns: minmax(210px,260px) minmax(0,1fr); gap: 22px; align-items: start; }
 .chapter-panel { padding: 20px 14px; position: sticky; top: var(--reading-offset); }
@@ -626,6 +651,7 @@ dialog::backdrop { background: rgba(0,0,0,.65); backdrop-filter: blur(6px); }
 .novel-prose { margin: 36px 0 48px; line-height: 2; overflow-wrap: anywhere; }
 .novel-prose h2 { margin-bottom: 28px; font-size: 1.4em; line-height: 1.6; }
 .novel-prose > div { white-space: pre-wrap; tab-size: 4; }
+.novel-prose [data-paragraph] { margin: 0; min-height: 2em; }
 .chapter-editor textarea { width: 100%; min-height: 52dvh; resize: vertical; border: 2px solid var(--line-strong); border-radius: 12px; padding: 18px; background: var(--surface); font-size: 16px; line-height: 1.9; font-weight: 400; }
 .editor-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 16px; font-size: 12px; color: var(--secondary); }
 .editor-footer > span { margin-right: auto; }

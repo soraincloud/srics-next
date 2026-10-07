@@ -1,16 +1,28 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { api, changed, jsonBody, type Item } from "./api";
 import { newID, parseTags, type Novel } from "./novels";
 import Icon from "./Icon.vue";
 import EmptyState from "./EmptyState.vue";
 import NovelReader from "./NovelReader.vue";
+import SegmentedControl from "./SegmentedControl.vue";
 const props = defineProps<{ itemId?: string }>();
 const items = ref<Item[]>([]),
   novel = ref<Novel>(),
   query = ref(""),
   tags = ref<string[]>([]),
   selected = ref<string[]>([]);
+const status = ref<"all" | "unfinished" | "completed">("all");
+const filtered = computed(() =>
+  !!query.value.trim() || !!selected.value.length || status.value !== "all",
+);
+const emptyTitle = computed(() =>
+  query.value.trim() || selected.value.length
+    ? "没有匹配的小说"
+    : status.value === "completed"
+      ? "暂无已完结小说"
+      : status.value === "unfinished" ? "暂无未完结小说" : "暂无小说",
+);
 const total = ref(0),
   next = ref(""),
   snapshot = ref(0),
@@ -34,6 +46,7 @@ async function load(more = false) {
       if (current === generation) novel.value = data;
     } else {
       const params = new URLSearchParams({ module: "novels", q: query.value });
+      if (status.value !== "all") params.set("status", status.value);
       for (const t of selected.value) params.append("tag", t);
       if (more) {
         params.set("after", next.value);
@@ -57,6 +70,19 @@ function search() {
   clearTimeout(timer);
   timer = setTimeout(() => load(), 250);
 }
+function filterStatus(value: typeof status.value) {
+  if (status.value === value) return;
+  status.value = value;
+  clearTimeout(timer);
+  void load();
+}
+function clearFilters() {
+  query.value = "";
+  selected.value = [];
+  status.value = "all";
+  clearTimeout(timer);
+  void load();
+}
 function toggleTag(t: string) {
   selected.value = selected.value.includes(t)
     ? selected.value.filter((v) => v !== t)
@@ -69,6 +95,9 @@ function edit() {
   formError.value = "";
   createId = newID();
   dialog.value?.showModal();
+}
+function statusChanged(item: Item) {
+  if (novel.value) novel.value.item = item;
 }
 async function save() {
   busy.value = true;
@@ -132,14 +161,19 @@ onUnmounted(() => {
       </button>
     </section>
     <div class="collection-toolbar">
-      <label class="search-field"
+      <SegmentedControl class="novel-status-filter" aria-label="小说状态筛选">
+        <button :aria-pressed="status === 'all'" @click="filterStatus('all')">全部</button>
+        <button :aria-pressed="status === 'unfinished'" @click="filterStatus('unfinished')"><span class="novel-status-dot" aria-hidden="true"></span>未完结</button>
+        <button :aria-pressed="status === 'completed'" @click="filterStatus('completed')"><span class="novel-status-dot completed" aria-hidden="true"></span>已完结</button>
+      </SegmentedControl>
+      <div class="novel-list-search"><label class="search-field"
         ><Icon name="search" /><input
           v-model="query"
           type="search"
           aria-label="搜索小说名称"
           placeholder="搜索名称"
           @input="search" /></label
-      ><span class="subtle-copy">{{ total }} 本</span>
+      ><span class="subtle-copy" role="status">{{ total }} 本</span></div>
     </div>
     <div v-if="tags.length" class="tag-filters" aria-label="标签筛选">
       <button
@@ -166,7 +200,10 @@ onUnmounted(() => {
         :href="'#/library/novels/' + item.id"
         class="novel-card panel"
       >
-        <span class="module-icon"><Icon name="text" /></span>
+        <div class="novel-card-heading">
+          <span class="module-icon"><Icon name="text" /></span>
+          <span class="novel-status" :class="{ completed: item.completed }">{{ item.completed ? '已完结' : '未完结' }}</span>
+        </div>
         <h2>{{ item.name }}</h2>
         <div class="content-tags">
           <span v-for="t in item.tags" :key="t">{{ t }}</span>
@@ -176,11 +213,11 @@ onUnmounted(() => {
     </div>
     <EmptyState
       v-if="!loading && !items.length && !error"
-      :icon="query || selected.length ? 'search' : 'text'"
-      :title="query || selected.length ? '没有匹配的小说' : '暂无小说'"
-      :description="query || selected.length ? '换个名称或清除筛选后再试。' : '新建小说后，可以添加和编辑章节。'"
+      :icon="filtered ? 'search' : 'text'"
+      :title="emptyTitle"
+      :description="filtered ? '调整名称、标签或完结状态后再试。' : '新建小说后，可以添加和编辑章节。'"
     >
-      <button v-if="query || selected.length" class="button secondary small" @click="query = ''; selected = []; load()">清除筛选</button>
+      <button v-if="filtered" class="button secondary small" @click="clearFilters">清除筛选</button>
       <button v-else class="button secondary small" @click="edit"><Icon name="edit" />新建小说</button>
     </EmptyState>
     <button
@@ -198,6 +235,7 @@ onUnmounted(() => {
     @reload="load"
     @edit="edit"
     @trash="trash"
+    @status="statusChanged"
   />
   <p v-if="loading && !novel" class="subtle-copy" role="status">正在加载…</p>
   <p v-if="error" class="notice warning" role="alert">

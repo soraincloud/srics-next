@@ -66,6 +66,7 @@ export type Item = {
   seq: number;
   pages: Page[];
   progress: number;
+  completed?: boolean;
 };
 export const previewURL = (item: Item, page = 0, thumb = true) =>
   `/api/items/${item.id}/pages/${page}${thumb ? "?thumb=1" : ""}`;

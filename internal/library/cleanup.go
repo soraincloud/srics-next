@@ -142,6 +142,9 @@ func (l *Library) purgeItemLocked(id string) error {
 		return err
 	}
 	defer tx.Rollback()
+	if _, err = tx.Exec("DELETE FROM novel_state WHERE novel_id=?", id); err != nil {
+		return err
+	}
 	if _, err = tx.Exec("DELETE FROM novel_reading WHERE novel_id=?", id); err != nil {
 		return err
 	}

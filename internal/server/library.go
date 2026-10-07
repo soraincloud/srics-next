@@ -397,6 +397,12 @@ func (a *LibraryAPI) handle(w http.ResponseWriter, r *http.Request) {
 func (a *LibraryAPI) list(r *http.Request) (any, error) {
 	q := r.URL.Query()
 	module := q.Get("module")
+	status := q.Get("status")
+	if status != "" {
+		if module != "novels" || (status != "all" && status != "unfinished" && status != "completed") {
+			return nil, errors.New("无效小说状态筛选")
+		}
+	}
 	trash := q.Get("trash") == "1"
 	if module == "all" && !trash {
 		return nil, errors.New("请选择一个资料空间")
@@ -428,6 +434,9 @@ func (a *LibraryAPI) list(r *http.Request) (any, error) {
 			allTags[t] = true
 		}
 		if it.Seq > snapshot {
+			continue
+		}
+		if (status == "completed" && !it.Completed) || (status == "unfinished" && it.Completed) {
 			continue
 		}
 		if module == "comics" || module == "novels" || module == "documents" || module == "attachments" {

@@ -15,11 +15,19 @@ import {
   jsonBody,
   protectUnsavedSession,
   sessionExpired,
+  type Item,
 } from "./api";
 import { setNavigationGuard } from "./navigation";
-import { newID, type Chapter, type ChapterVersion, type Novel } from "./novels";
+import {
+  newID,
+  type Chapter,
+  type ChapterVersion,
+  type Novel,
+  type NovelBookmark,
+} from "./novels";
+import { clampAnchor, createReadingWriter, paragraphAtLine } from "./novelReading";
 const props = defineProps<{ novel: Novel }>();
-const emit = defineEmits<{ reload: []; edit: []; trash: [] }>();
+const emit = defineEmits<{ reload: []; edit: []; trash: []; status: [item: Item] }>();
 const chapter = ref<Chapter>(),
   editing = ref(false),
   title = ref(""),
@@ -33,6 +41,133 @@ const loading = ref(false),
 const deleted = ref(false),
   fontSize = ref(18),
   reader = ref<HTMLElement>();
+const prose = ref<HTMLElement>();
+const paragraphs = computed(() =>
+  (chapter.value?.body || "（本章暂无正文）").split("\n"),
+);
+const resumeBookmark = ref<NovelBookmark>(props.novel.bookmark || {
+  chapter: props.novel.reading,
+  paragraph: 0,
+  fraction: 0,
+  revision: 0,
+});
+const showResume = ref(!!props.novel.reading);
+const resumeChapter = computed(() =>
+  props.novel.chapters.find(c => c.id === resumeBookmark.value.chapter),
+);
+const readingError = ref("");
+let readingArmed = false,
+  readingTimer: ReturnType<typeof setTimeout> | undefined;
+const readingWriter = createReadingWriter<NovelBookmark>(async (bookmark) => {
+  try {
+    await api("/api/novels/" + props.novel.item.id + "/progress", {
+      method: "PUT",
+      body: jsonBody(bookmark),
+      keepalive: true,
+      signal: AbortSignal.timeout(5000),
+    });
+    readingError.value = "";
+  } catch (e) {
+    readingError.value = e instanceof APIError && e.status === 409
+      ? "章节已在另一处修改，重新打开章节后可继续保存阅读位置。"
+      : "阅读位置暂未保存，请检查连接后重试。";
+    throw e;
+  }
+});
+function readingLine() {
+  return (
+    (document.querySelector(".toolbar")?.getBoundingClientRect().bottom || 0) + 16
+  );
+}
+function captureReading() {
+  if (
+    !readingArmed || editing.value || loading.value || !chapter.value || !prose.value
+  ) return;
+  if (prose.value.getBoundingClientRect().top >= window.innerHeight) return;
+  const nodes = prose.value.querySelectorAll<HTMLElement>("[data-paragraph]");
+  const anchor = paragraphAtLine(
+    nodes.length, i => nodes[i]!.getBoundingClientRect(), readingLine(),
+  );
+  readingWriter.queue({
+    chapter: chapter.value.id, revision: chapter.value.revision, ...anchor,
+  });
+}
+async function flushReading() {
+  clearTimeout(readingTimer);
+  readingTimer = undefined;
+  captureReading();
+  return readingWriter.flush();
+}
+function scrollReading() {
+  if (stopped || !readingArmed || editing.value || loading.value) return;
+  if (readingTimer === undefined) {
+    readingTimer = setTimeout(() => {
+      readingTimer = undefined;
+      void flushReading();
+    }, 600);
+  }
+}
+function readingIntent(e: Event) {
+  if (editing.value || loading.value) return;
+  const target = e.target instanceof Element ? e.target : null;
+  if (target?.closest("input,textarea,select,button,dialog,.chapter-panel")) return;
+  if (
+    e instanceof KeyboardEvent &&
+    !["ArrowDown", "ArrowUp", "PageDown", "PageUp", "Home", "End", " "].includes(e.key)
+  ) return;
+  if (
+    e instanceof PointerEvent && !target?.closest(".novel-prose") &&
+    e.clientX < document.documentElement.clientWidth
+  ) return;
+  readingArmed = true;
+}
+function visibilityReading() {
+  if (document.visibilityState === "hidden") void flushReading();
+}
+function pageHideReading() {
+  void flushReading();
+}
+async function resumeReading() {
+  const bookmark = resumeBookmark.value;
+  if (!resumeChapter.value || blocked.value) return;
+  if (chapter.value?.id !== bookmark.chapter) {
+    await choose(bookmark.chapter, false, false, false);
+  }
+  if (chapter.value?.id !== bookmark.chapter || editing.value) return;
+  await nextTick();
+  const nodes = prose.value?.querySelectorAll<HTMLElement>("[data-paragraph]");
+  if (!nodes?.length) return;
+  const anchor = clampAnchor(bookmark, nodes.length);
+  const r = nodes[anchor.paragraph]!.getBoundingClientRect();
+  window.scrollTo({
+    top: window.scrollY + r.top + r.height * anchor.fraction - readingLine(),
+    behavior: "instant",
+  });
+  showResume.value = false;
+  readingArmed = true;
+  await flushReading();
+}
+async function toggleCompleted() {
+  if (blocked.value) return;
+  actionBusy.value = true;
+  error.value = "";
+  try {
+    const item = await api<Item>("/api/novels/" + props.novel.item.id + "/status", {
+      method: "PUT",
+      body: jsonBody({
+        completed: !props.novel.item.completed,
+        revision: props.novel.item.revision,
+      }),
+    });
+    emit("status", item);
+    changed();
+  } catch (e) {
+    error.value = (e as Error).message;
+    if (e instanceof APIError && e.status === 409) emit("reload");
+  } finally {
+    actionBusy.value = false;
+  }
+}
 const newDialog = ref<HTMLDialogElement>(),
   newTitle = ref(""),
   newError = ref(""),
@@ -113,6 +248,7 @@ function answerDiscard(value: boolean) {
   discardPending = undefined;
 }
 async function leave() {
+  await flushReading();
   if (saving.value) {
     error.value = "正在保存，请稍候。";
     return false;
@@ -133,15 +269,18 @@ async function leave() {
   return true;
 }
 function beforeUnload(e: BeforeUnloadEvent) {
+  void flushReading();
   if (dirty.value || saving.value) {
     e.preventDefault();
     e.returnValue = "";
   }
 }
-async function choose(id: string, edit = editing.value, scroll = true) {
+async function choose(id: string, edit = editing.value, scroll = true, track = true) {
   if (blocked.value || !(await leave())) return;
   const current = ++generation;
+  let selected = false;
   loading.value = true;
+  readingArmed = false;
   error.value = "";
   saveError.value = "";
   conflict.value = undefined;
@@ -154,24 +293,19 @@ async function choose(id: string, edit = editing.value, scroll = true) {
     body.value = c.body || "";
     editing.value = edit;
     clearTimeout(timer);
-    if (!edit) await markRead(id);
     await nextTick();
     if (scroll)
       reader.value?.scrollIntoView({ block: "start", behavior: "instant" });
+    if (track) showResume.value = false;
+    selected = true;
   } catch (e) {
     error.value = (e as Error).message;
   } finally {
-    if (current === generation) loading.value = false;
-  }
-}
-async function markRead(id: string) {
-  try {
-    await api("/api/novels/" + props.novel.item.id + "/progress", {
-      method: "PUT",
-      body: jsonBody({ chapter: id }),
-    });
-  } catch {
-    error.value = "阅读进度暂未保存，重新选择章节可重试。";
+    if (current === generation) {
+      loading.value = false;
+      readingArmed = selected && track && !editing.value;
+      if (readingArmed) void flushReading();
+    }
   }
 }
 async function save(automatic = false) {
@@ -222,9 +356,12 @@ async function save(automatic = false) {
 async function mode(edit: boolean) {
   if (edit === editing.value || blocked.value) return;
   if (!edit && dirty.value && (!(await save()) || dirty.value)) return;
+  if (edit) await flushReading();
   editing.value = edit;
+  readingArmed = !edit;
   error.value = "";
-  if (!edit && chapter.value) await markRead(chapter.value.id);
+  await nextTick();
+  if (!edit && chapter.value) await flushReading();
 }
 async function editNovel() {
   if (!blocked.value && (await leave())) emit("edit");
@@ -464,6 +601,13 @@ onMounted(() => {
   unguard = setNavigationGuard(leave);
   window.addEventListener("beforeunload", beforeUnload);
   window.addEventListener("keydown", keydown);
+  window.addEventListener("scroll", scrollReading, { passive: true });
+  window.addEventListener("wheel", readingIntent, { passive: true });
+  window.addEventListener("touchstart", readingIntent, { passive: true });
+  window.addEventListener("pointerdown", readingIntent, { passive: true });
+  window.addEventListener("keydown", readingIntent);
+  window.addEventListener("pagehide", pageHideReading);
+  document.addEventListener("visibilitychange", visibilityReading);
   try {
     const size = Number(localStorage.getItem("srics-novel-font"));
     if (size >= 14 && size <= 28) fontSize.value = size;
@@ -471,9 +615,13 @@ onMounted(() => {
   const initial =
     props.novel.chapters.find((c) => c.id === props.novel.reading) ||
     props.novel.chapters[0];
-  if (initial) void choose(initial.id, false, false);
+  if (initial) void choose(initial.id, false, false, !props.novel.reading);
 });
 onUnmounted(() => {
+  // The route guard captured the position before the DOM changed. Teardown
+  // removes the teleported toolbar and can shift paragraph geometry; never
+  // calculate a second position from that partially removed layout.
+  void readingWriter.flush();
   stopped = true;
   generation++;
   clearTimeout(timer);
@@ -482,6 +630,14 @@ onUnmounted(() => {
   protectUnsavedSession.value = false;
   window.removeEventListener("beforeunload", beforeUnload);
   window.removeEventListener("keydown", keydown);
+  clearTimeout(readingTimer);
+  window.removeEventListener("scroll", scrollReading);
+  window.removeEventListener("wheel", readingIntent);
+  window.removeEventListener("touchstart", readingIntent);
+  window.removeEventListener("pointerdown", readingIntent);
+  window.removeEventListener("keydown", readingIntent);
+  window.removeEventListener("pagehide", pageHideReading);
+  document.removeEventListener("visibilitychange", visibilityReading);
 });
 </script>
 <template>
@@ -493,6 +649,10 @@ onUnmounted(() => {
         <span v-for="t in novel.item.tags" :key="t">{{ t }}</span>
       </div>
     </div>
+    <button class="novel-status-switch" role="switch" aria-label="小说已完结" :aria-checked="!!novel.item.completed" :disabled="blocked" @click="toggleCompleted">
+      <span class="switch-track" aria-hidden="true"><span></span></span>
+      {{ novel.item.completed ? '已完结' : '未完结' }}
+    </button>
   </section>
   <PageActions>
       <template v-if="chapter && editing">
@@ -519,6 +679,7 @@ onUnmounted(() => {
       </button>
   </PageActions>
   <p v-if="error" class="notice warning" role="alert">{{ error }}</p>
+  <p v-if="readingError" class="notice warning" role="alert">{{ readingError }} <button class="button small secondary" @click="flushReading">重试</button></p>
   <div class="novel-layout">
     <aside class="chapter-panel panel">
       <div class="chapter-heading">
@@ -702,11 +863,12 @@ onUnmounted(() => {
         </template>
         <article
           v-else
+          ref="prose"
           class="novel-prose"
           :style="{ fontSize: fontSize + 'px' }"
         >
           <h2>{{ chapter.title }}</h2>
-          <div>{{ chapter.body || "（本章暂无正文）" }}</div>
+          <div><p v-for="(paragraph, i) in paragraphs" :key="i" :data-paragraph="i">{{ paragraph || '\u200b' }}</p></div>
         </article>
         <nav class="chapter-navigation" aria-label="章节翻页">
           <button
@@ -734,6 +896,13 @@ onUnmounted(() => {
       </EmptyState>
     </section>
   </div>
+  <Transition name="reading-resume">
+    <aside v-if="showResume && resumeChapter && !editing" class="novel-resume" aria-label="上次阅读位置">
+      <div><span>上次读到</span><strong>{{ resumeChapter.title }}</strong></div>
+      <button class="button small primary" :disabled="blocked" @click="resumeReading"><Icon name="clock" />继续阅读</button>
+      <button class="icon-button" aria-label="关闭继续阅读提示" @click="showResume = false"><Icon name="close" /></button>
+    </aside>
+  </Transition>
   <dialog
     ref="discardDialog"
     class="app-dialog"

@@ -202,7 +202,7 @@ func TestNovelMigrationPreservesV1Library(t *testing.T) {
 	if err := l.Setup([]byte("old-hash")); err != nil {
 		t.Fatal(err)
 	}
-	_, err := l.db.Exec("DROP TABLE transfer_chunks; DROP TABLE transfers; DROP TABLE private_items; DROP TABLE novel_reading; DROP TABLE chapter_versions; DROP TABLE chapters; DELETE FROM items WHERE module='novels'; PRAGMA user_version=1")
+	_, err := l.db.Exec("DROP TABLE novel_state; DROP TABLE transfer_chunks; DROP TABLE transfers; DROP TABLE private_items; DROP TABLE novel_reading; DROP TABLE chapter_versions; DROP TABLE chapters; DELETE FROM items WHERE module='novels'; PRAGMA user_version=1")
 	if err != nil {
 		t.Fatal(err)
 	}

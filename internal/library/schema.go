@@ -21,6 +21,7 @@ func checkSchema(db *sql.DB, version int) error {
 		{3, "SELECT seq,id,payload,object,thumb,hash,thumb_hash FROM private_items LIMIT 0"},
 		{4, "SELECT id,private,payload FROM transfers LIMIT 0"},
 		{4, "SELECT transfer_id,idx,object,hash FROM transfer_chunks LIMIT 0"},
+		{7, "SELECT novel_id,completed,paragraph,fraction,reading_revision,reading_updated FROM novel_state LIMIT 0"},
 	}
 	for _, q := range queries {
 		if q.version > version {

@@ -14,6 +14,14 @@ export type Novel = {
   chapters: Chapter[];
   trash: Chapter[];
   reading: string;
+  bookmark?: NovelBookmark;
+};
+export type NovelBookmark = {
+  chapter: string;
+  paragraph: number;
+  fraction: number;
+  revision: number;
+  updated?: string;
 };
 export type ChapterVersion = {
   revision: number;

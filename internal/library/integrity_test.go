@@ -158,7 +158,7 @@ func TestTruncatedDatabaseNeverBecomesEmptyLibrary(t *testing.T) {
 }
 
 func TestDamagedSchemaStopsStartupAndPreservesObjects(t *testing.T) {
-	for _, damage := range []string{"PRAGMA user_version=0", "DROP TABLE chapter_versions", "ALTER TABLE items DROP COLUMN pages"} {
+	for _, damage := range []string{"PRAGMA user_version=0", "DROP TABLE chapter_versions", "DROP TABLE novel_state", "ALTER TABLE items DROP COLUMN pages"} {
 		t.Run(damage, func(t *testing.T) {
 			l := testLibrary(t)
 			data := fixture(t)

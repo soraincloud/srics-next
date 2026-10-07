@@ -50,7 +50,11 @@ func TestRealLibraryEncryptedBackupAndIndependentRestore(t *testing.T) {
 	if err = l.TrashChapter(novel.ID, removed.ID, removed.Revision, false); err != nil {
 		t.Fatal(err)
 	}
-	if err = l.NovelProgress(novel.ID, chapter.ID); err != nil {
+	if err = l.SaveNovelBookmark(novel.ID, NovelBookmark{Chapter: chapter.ID, Fraction: .375, Revision: saved.Revision}); err != nil {
+		t.Fatal(err)
+	}
+	current, _ = l.Novel(novel.ID)
+	if _, err = l.SetNovelCompleted(novel.ID, true, current.Item.Revision); err != nil {
 		t.Fatal(err)
 	}
 	wrapped, e := l.PrepareVault("synthetic-independent-vault", "")
@@ -116,7 +120,7 @@ func TestRealLibraryEncryptedBackupAndIndependentRestore(t *testing.T) {
 		t.Fatal("novel lost after independent restore", err)
 	}
 	restoredNovel, err := restored.Novel(novel.ID)
-	if err != nil || restoredNovel.Reading != chapter.ID || len(restoredNovel.Trash) != 1 {
+	if err != nil || restoredNovel.Reading != chapter.ID || len(restoredNovel.Trash) != 1 || !restoredNovel.Item.Completed || restoredNovel.Bookmark == nil || restoredNovel.Bookmark.Fraction != .375 || restoredNovel.Bookmark.Revision != saved.Revision {
 		t.Fatal("novel structure lost", err)
 	}
 	versions, err := restored.Versions(novel.ID, chapter.ID)

@@ -51,16 +51,17 @@ type Library struct {
 	FreeSpace  func(string) (uint64, error)
 }
 type Item struct {
-	ID       string   `json:"id"`
-	Module   string   `json:"module"`
-	Name     string   `json:"name"`
-	Tags     []string `json:"tags"`
-	Created  string   `json:"created"`
-	Deleted  string   `json:"deleted"`
-	Revision int      `json:"revision"`
-	Seq      int64    `json:"seq"`
-	Pages    []Page   `json:"pages"`
-	Progress int      `json:"progress"`
+	ID        string   `json:"id"`
+	Module    string   `json:"module"`
+	Name      string   `json:"name"`
+	Tags      []string `json:"tags"`
+	Created   string   `json:"created"`
+	Deleted   string   `json:"deleted"`
+	Revision  int      `json:"revision"`
+	Seq       int64    `json:"seq"`
+	Pages     []Page   `json:"pages"`
+	Progress  int      `json:"progress"`
+	Completed bool     `json:"completed"`
 }
 type Page struct {
 	Name   string `json:"name"`
@@ -184,7 +185,7 @@ func openLibrary(root string, initialize bool) (*Library, error) {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version > 6 {
+	if version > 7 {
 		return fail(errors.New("数据版本较新，请升级程序后打开"))
 	}
 	if version < 0 || (version == 0 && !initialize) {
@@ -235,6 +236,11 @@ PRAGMA user_version=1;`)
 	}
 	if version < 6 {
 		if err = migrateFiles(db, root, version > 0); err != nil {
+			return fail(err)
+		}
+	}
+	if version < 7 {
+		if err = migrateNovelState(db, root, version > 0); err != nil {
 			return fail(err)
 		}
 	}
@@ -357,7 +363,7 @@ func (l *Library) Items(module string, trash bool) ([]Item, error) {
 	if err := l.Check(); err != nil {
 		return nil, err
 	}
-	rows, err := l.db.Query("SELECT id,module,name,tags,created,deleted,revision,seq,pages,progress FROM items WHERE (?='all' OR module=?) AND (deleted!='')=? ORDER BY seq DESC", module, module, trash)
+	rows, err := l.db.Query("SELECT i.id,i.module,i.name,i.tags,i.created,i.deleted,i.revision,i.seq,i.pages,i.progress,COALESCE(n.completed,0) FROM items i LEFT JOIN novel_state n ON n.novel_id=i.id WHERE (?='all' OR i.module=?) AND (i.deleted!='')=? ORDER BY i.seq DESC", module, module, trash)
 	if err != nil {
 		return nil, err
 	}
@@ -366,7 +372,7 @@ func (l *Library) Items(module string, trash bool) ([]Item, error) {
 	for rows.Next() {
 		var it Item
 		var tags, pages string
-		if err = rows.Scan(&it.ID, &it.Module, &it.Name, &tags, &it.Created, &it.Deleted, &it.Revision, &it.Seq, &pages, &it.Progress); err != nil {
+		if err = rows.Scan(&it.ID, &it.Module, &it.Name, &tags, &it.Created, &it.Deleted, &it.Revision, &it.Seq, &pages, &it.Progress, &it.Completed); err != nil {
 			return nil, err
 		}
 		if err = json.Unmarshal([]byte(tags), &it.Tags); err != nil {
@@ -388,7 +394,7 @@ func (l *Library) Item(id string) (Item, error) {
 		return it, err
 	}
 	var tags, pages string
-	err := l.db.QueryRow("SELECT id,module,name,tags,created,deleted,revision,seq,pages,progress FROM items WHERE id=?", id).Scan(&it.ID, &it.Module, &it.Name, &tags, &it.Created, &it.Deleted, &it.Revision, &it.Seq, &pages, &it.Progress)
+	err := l.db.QueryRow("SELECT i.id,i.module,i.name,i.tags,i.created,i.deleted,i.revision,i.seq,i.pages,i.progress,COALESCE(n.completed,0) FROM items i LEFT JOIN novel_state n ON n.novel_id=i.id WHERE i.id=?", id).Scan(&it.ID, &it.Module, &it.Name, &tags, &it.Created, &it.Deleted, &it.Revision, &it.Seq, &pages, &it.Progress, &it.Completed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return it, ErrMissing
 	}
