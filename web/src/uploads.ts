@@ -1,5 +1,6 @@
 import { ref } from "vue";
 import { sendTransfer, transferID } from "./transfers";
+import { matchUploadSources } from "./uploadSources";
 export const uploadProgress = ref("");
 import { api, changed, jsonBody } from "./api";
 export type Upload = {
@@ -11,6 +12,7 @@ export type Upload = {
   state: string;
   error: string;
   created: string;
+  autoName?: boolean;
 };
 export const uploads = ref<Upload[]>([]),
   running = ref(""),
@@ -45,12 +47,7 @@ export async function createUpload(
   return id;
 }
 export async function resumeUpload(up: Upload, files: File[]) {
-  const mapped = up.files.map((f) =>
-    files.find((v) => v.name === f.name && v.size === f.size),
-  );
-  if (mapped.some((v) => !v) || files.length !== up.files.length)
-    throw new Error("请重新选择这个任务原来的文件，名称和数量需要一致。");
-  sources.set(up.id, mapped as File[]);
+  sources.set(up.id, matchUploadSources(up, files));
   await runUpload(up.id);
 }
 export async function runUpload(id: string) {

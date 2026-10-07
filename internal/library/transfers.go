@@ -209,7 +209,13 @@ func (l *Library) CreateTransfer(ctx context.Context, t Transfer, a *vault.Acces
 		if err != nil {
 			return t, err
 		}
-		if t.Index < 0 || t.Index >= len(up.Files) || up.State == "cancelled" || up.Module != t.Module || up.Files[t.Index].Name != t.Name || up.Files[t.Index].Size != t.Size {
+		if t.Index < 0 || t.Index >= len(up.Files) || up.State == "cancelled" || up.Module != t.Module {
+			return t, ErrConflict
+		}
+		if up.AutoName {
+			t.Name = up.Files[t.Index].Name
+		}
+		if up.Files[t.Index].Name != t.Name || up.Files[t.Index].Size != t.Size {
 			return t, ErrConflict
 		}
 	} else {

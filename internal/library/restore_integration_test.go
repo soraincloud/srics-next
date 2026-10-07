@@ -108,8 +108,12 @@ func TestRealLibraryEncryptedBackupAndIndependentRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	it, err := restored.Item(first.ID)
-	if err != nil || it.Name != first.Name || it.Pages[0].SHA256 != first.Pages[0].SHA256 {
+	if err != nil || it.Name != first.Name || it.Pages[0].Name != "IMG-000001.png" || it.Pages[0].SHA256 != first.Pages[0].SHA256 {
 		t.Fatal("image reference lost", err)
+	}
+	nextImage, err := restored.CreateUpload(imageRequest(NewID(), "after-disaster.png", len(fixture(t))))
+	if err != nil || nextImage.Name != "IMG-000002" {
+		t.Fatal("independent encrypted restore lost image numbering", nextImage, err)
 	}
 	trash, _ := restored.Items("all", true)
 	if len(trash) != 1 || trash[0].ID != photo.ID {

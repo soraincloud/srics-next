@@ -10,6 +10,7 @@ import (
 	"image"
 	"image/png"
 	"io"
+	"mime"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -45,6 +46,7 @@ func TestLibraryHTTPAuthenticationAndFlow(t *testing.T) {
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{Jar: jar}
 	csrf := ""
+	var responseHeaders http.Header
 	call := func(method, path string, body []byte, headers map[string]string) (int, []byte) {
 		t.Helper()
 		req, _ := http.NewRequest(method, h.URL+path, bytes.NewReader(body))
@@ -60,6 +62,7 @@ func TestLibraryHTTPAuthenticationAndFlow(t *testing.T) {
 			t.Fatal(e)
 		}
 		defer res.Body.Close()
+		responseHeaders = res.Header.Clone()
 		b, e := io.ReadAll(res.Body)
 		if e != nil {
 			t.Fatal(e)
@@ -131,10 +134,31 @@ func TestLibraryHTTPAuthenticationAndFlow(t *testing.T) {
 		return it
 	}
 	imageItem := put("images", "2.png")
-	_ = put("photos", "2.png")
+	photoItem := put("photos", "2.png")
 	code, data = call("GET", "/api/items/"+imageItem.ID+"/download", nil, nil)
 	if code != 200 || !bytes.Equal(data, raw) {
 		t.Fatal("original download changed")
+	}
+	_, downloadName, err := mime.ParseMediaType(responseHeaders.Get("Content-Disposition"))
+	if err != nil || downloadName["filename"] != imageItem.Pages[0].Name || downloadName["filename"] != "IMG-000001.png" {
+		t.Fatal("image download retained source name", downloadName, err)
+	}
+	secondImage := put("images", "another-source.jpg")
+	code, data = call("GET", "/api/download?id="+imageItem.ID+"&id="+secondImage.ID, nil, nil)
+	z, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if code != 200 || err != nil || len(z.File) != 2 || z.File[0].Name != "IMG-000001.png" || z.File[1].Name != "IMG-000002.png" {
+		t.Fatal("batch download names", code, err)
+	}
+	if code, _ = call("GET", "/api/items/"+photoItem.ID+"/download", nil, nil); code != 200 {
+		t.Fatal("photo download", code)
+	}
+	_, photoName, err := mime.ParseMediaType(responseHeaders.Get("Content-Disposition"))
+	if err != nil || photoName["filename"] != "2.png" {
+		t.Fatal("photo original name changed", photoName, err)
+	}
+	// Keep the existing random-pool isolation assertion to a single image.
+	if code, _ = call("DELETE", "/api/items/"+secondImage.ID, nil, nil); code != 200 {
+		t.Fatal("remove second test image", code)
 	}
 	code, data = call("GET", "/api/library?module=images&random=1", nil, nil)
 	var listing struct {

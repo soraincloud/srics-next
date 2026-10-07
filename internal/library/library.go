@@ -78,14 +78,15 @@ type UploadFile struct {
 	Page       *Page  `json:"page,omitempty"`
 }
 type Upload struct {
-	ID      string       `json:"id"`
-	Module  string       `json:"module"`
-	Name    string       `json:"name"`
-	Tags    []string     `json:"tags"`
-	Files   []UploadFile `json:"files"`
-	State   string       `json:"state"`
-	Error   string       `json:"error"`
-	Created string       `json:"created"`
+	ID       string       `json:"id"`
+	Module   string       `json:"module"`
+	Name     string       `json:"name"`
+	Tags     []string     `json:"tags"`
+	Files    []UploadFile `json:"files"`
+	State    string       `json:"state"`
+	Error    string       `json:"error"`
+	Created  string       `json:"created"`
+	AutoName bool         `json:"autoName,omitempty"`
 }
 
 func NewID() string {

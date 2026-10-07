@@ -72,6 +72,14 @@ func (up Upload) validate() error {
 	if up.State != "pending" && up.State != "failed" && up.State != "complete" && up.State != "cancelled" {
 		return errors.New("上传状态损坏，已停止清理，请从备份恢复")
 	}
+	if up.AutoName {
+		if _, ok := imageNameNumber(up.Name); !ok || path.Ext(up.Name) != "" || up.Module != "images" || len(up.Files) != 1 || up.Files[0].Name != up.Name {
+			return errors.New("图片编号索引损坏，已停止清理")
+		}
+		if p := up.Files[0].Page; p != nil && (imageNameExtension(p.MIME) == "" || p.Name != up.Name+imageNameExtension(p.MIME)) {
+			return errors.New("图片文件名与格式不一致，已停止清理")
+		}
+	}
 	if up.Module == "attachments" {
 		if len(up.Files) != 1 || len(up.Tags) != 0 || up.Files[0].Size < 0 || up.Files[0].Size > MaxOrdinaryFile {
 			return errors.New("普通文件上传索引损坏，已停止清理")
@@ -112,6 +120,29 @@ func (l *Library) CreateUpload(up Upload) (Upload, error) {
 	if !IDPattern.MatchString(up.ID) || !ValidModule(up.Module) || up.Module == "novels" || up.Module == "documents" || len(up.Files) == 0 || len(up.Files) > 3000 {
 		return up, errors.New("请选择有效的上传内容（每本最多 3000 页）")
 	}
+	up.Files = append([]UploadFile(nil), up.Files...)
+	old, lookupErr := l.Upload(up.ID)
+	if lookupErr != nil && !errors.Is(lookupErr, ErrMissing) {
+		return up, lookupErr
+	}
+	// New image imports discard source names before persisting any task. Old
+	// unfinished tasks retain their original identity so they can still resume.
+	up.AutoName = up.Module == "images" && (errors.Is(lookupErr, ErrMissing) || old.AutoName)
+	var imageNumber int64
+	if up.AutoName {
+		if lookupErr == nil {
+			up.Name = old.Name
+		} else {
+			var e error
+			up.Name, imageNumber, e = l.nextImageName()
+			if e != nil {
+				return up, e
+			}
+		}
+		for i := range up.Files {
+			up.Files[i].Name = up.Name
+		}
+	}
 	var err error
 	up.Name, err = CleanName(up.Name)
 	if err != nil {
@@ -140,8 +171,7 @@ func (l *Library) CreateUpload(up Upload) (Upload, error) {
 		up.Files[i].Page = nil
 		up.Files[i].SourceHash = ""
 	}
-	old, err := l.Upload(up.ID)
-	if err == nil {
+	if lookupErr == nil {
 		a := old
 		b := up
 		a.State = ""
@@ -161,12 +191,12 @@ func (l *Library) CreateUpload(up Upload) (Upload, error) {
 		}
 		return l.Upload(up.ID)
 	}
-	if !errors.Is(err, ErrMissing) {
-		return up, err
-	}
 	up.State = "pending"
 	up.Error = ""
 	up.Created = time.Now().UTC().Format(time.RFC3339Nano)
+	if up.AutoName {
+		return up, l.saveNumberedImageUpload(up, imageNumber)
+	}
 	return up, l.saveUpload(up)
 }
 func (l *Library) Receive(ctx context.Context, id string, index int, sourceHash string, src io.Reader, c media.Converter) (Upload, error) {
@@ -255,6 +285,9 @@ func (l *Library) Receive(ctx context.Context, id string, index int, sourceHash 
 	}
 	p.Name = f.Name
 	p.MIME = mime
+	if up.AutoName {
+		p.Name = up.Name + imageNameExtension(mime)
+	}
 	// Thumbnails are replaceable display copies; source bytes and metadata stay intact.
 	// EXIF-oriented images use their original so the browser applies orientation.
 	if !hasOrientationMetadata(data) {

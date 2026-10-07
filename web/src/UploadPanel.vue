@@ -263,10 +263,11 @@ defineExpose({ open: () => open() });
               ? batchComic
                 ? "选择包含各本漫画文件夹的总目录，页序按数字排列"
                 : "一层图片目录，页序按文件名中的数字排列"
-              : "保留原始文件及元数据"
+              : module === "images" ? "自动编号，保留图片原件" : "保留原始文件及元数据"
           }}
           · 单文件最多 {{ module === 'attachments' ? '10 GiB' : '64 MiB' }}</span>
       </button>
+      <p v-if="module === 'images' && !resume" class="subtle-copy">图片按 IMG-000001 等编号保存，原文件名不保留。</p>
       <input
           ref="input"
           type="file"
