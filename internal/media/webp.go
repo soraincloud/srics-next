@@ -1,4 +1,4 @@
-// Package media defines the canonical decode contract for comic pages:
+// Package media defines the canonical decode contract for static images:
 // Go's JPEG/PNG decoder, no color transform or EXIF rotation, then lossless
 // WebP encoding. ICC/EXIF/XMP are preserved separately, without double rotation.
 package media
@@ -86,7 +86,7 @@ func (c Converter) Convert(ctx context.Context, input []byte) (Result, error) {
 			alpha = alpha || p.A != 255
 		}
 	}
-	// Only ordinary comic pages reach this converter. Private photos retain
+	// Only ordinary comic pages and images reach this converter. Private photos retain
 	// original bytes and must never be routed through these plaintext temp files.
 	dir, err := os.MkdirTemp("", "srics-webp-")
 	if err != nil {

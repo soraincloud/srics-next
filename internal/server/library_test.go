@@ -38,7 +38,10 @@ func TestLibraryHTTPAuthenticationAndFlow(t *testing.T) {
 	defer l.Close()
 	h := httptest.NewUnstartedServer(nil)
 	s := New(context.Background(), h.Listener.Addr().String(), fstest.MapFS{"index.html": {Data: []byte("app")}}, nil)
-	cwebp, _ := exec.LookPath("cwebp")
+	cwebp, err := exec.LookPath("cwebp")
+	if err != nil {
+		t.Skip("requires cwebp for static image conversion")
+	}
 	s.EnableLibrary(l, media.Converter{CWebP: cwebp}, backup.Client{})
 	h.Config.Handler = s
 	h.Start()
@@ -136,17 +139,19 @@ func TestLibraryHTTPAuthenticationAndFlow(t *testing.T) {
 	imageItem := put("images", "2.png")
 	photoItem := put("photos", "2.png")
 	code, data = call("GET", "/api/items/"+imageItem.ID+"/download", nil, nil)
-	if code != 200 || !bytes.Equal(data, raw) {
-		t.Fatal("original download changed")
+	downloaded, format, decodeErr := image.Decode(bytes.NewReader(data))
+	source, _, _ := image.Decode(bytes.NewReader(raw))
+	if code != 200 || decodeErr != nil || format != "webp" || !media.EqualPixels(source, downloaded) {
+		t.Fatal("converted download changed pixels", decodeErr)
 	}
 	_, downloadName, err := mime.ParseMediaType(responseHeaders.Get("Content-Disposition"))
-	if err != nil || downloadName["filename"] != imageItem.Pages[0].Name || downloadName["filename"] != "IMG-000001.png" {
+	if err != nil || downloadName["filename"] != imageItem.Pages[0].Name || downloadName["filename"] != "IMG-000001.webp" {
 		t.Fatal("image download retained source name", downloadName, err)
 	}
 	secondImage := put("images", "another-source.jpg")
 	code, data = call("GET", "/api/download?id="+imageItem.ID+"&id="+secondImage.ID, nil, nil)
 	z, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
-	if code != 200 || err != nil || len(z.File) != 2 || z.File[0].Name != "IMG-000001.png" || z.File[1].Name != "IMG-000002.png" {
+	if code != 200 || err != nil || len(z.File) != 2 || z.File[0].Name != "IMG-000001.webp" || z.File[1].Name != "IMG-000002.webp" {
 		t.Fatal("batch download names", code, err)
 	}
 	if code, _ = call("GET", "/api/items/"+photoItem.ID+"/download", nil, nil); code != 200 {
@@ -249,7 +254,15 @@ func TestRandomPaginationStableUnderDeletion(t *testing.T) {
 	a := LibraryAPI{store: l}
 	var b bytes.Buffer
 	png.Encode(&b, image.NewNRGBA(image.Rect(0, 0, 1, 1)))
-	raw := b.Bytes()
+	cwebp, err := exec.LookPath("cwebp")
+	if err != nil {
+		t.Skip("requires cwebp")
+	}
+	converted, err := (media.Converter{CWebP: cwebp}).Convert(context.Background(), b.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := converted.Data
 	sum := sha256.Sum256(raw)
 	hash := hex.EncodeToString(sum[:])
 	add := func() string {

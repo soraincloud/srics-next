@@ -1,8 +1,8 @@
 # SRICS Next 安装与使用
 
-版本：v0.3.0-rc27 · Build 33。当前包：Apple Silicon（M 系列）Mac，macOS 27.0 或更新版本。
+版本：v0.3.0-rc28 · Build 34。当前包：Apple Silicon（M 系列）Mac，macOS 27.0 或更新版本。
 
-本机交付直接提供 `SRICS Next.app` 并在 Finder 中选中，不生成应用压缩包。当前应用位于 `dist/0.3.0-rc27-build33/SRICS Next.app`。Build 33 为普通“图片”模块的新上传统一生成 IMG-000001 等连续编号，不保留来源文件名，下载扩展名按真实格式生成。原件字节不变，编号随资料库备份；既有图片、个人照片及漫画保留原有行为。历次变化见 [更新记录](../CHANGELOG.md)。
+本机交付直接提供 `SRICS Next.app` 并在 Finder 中选中，不生成应用压缩包。当前应用位于 `dist/0.3.0-rc28-build34/SRICS Next.app`。Build 34 为普通“图片”模块的新上传将 JPEG / PNG 无损转为 WebP，已有 WebP 和 GIF 保留原字节；GIF 在列表、随机墙和大图中播放动画，与 WebP 共用 IMG 连续编号。编号与全部图片随资料库备份，既有图片不自动转码。历次变化见 [更新记录](../CHANGELOG.md)。
 
 这是现有构建机生成的试用包。程序窗口本身以 macOS 13 为编译目标，但本包的服务和部分内置库要求 macOS 27；打包脚本现在会按全部内置组件的最高要求设置最低系统版本。旧系统需要另外构建兼容依赖的包，不能通过修改版本标记获得兼容性。
 

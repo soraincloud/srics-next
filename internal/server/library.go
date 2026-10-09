@@ -520,7 +520,7 @@ func (a *LibraryAPI) page(w http.ResponseWriter, r *http.Request, id, n string) 
 	p := it.Pages[i]
 	obj := p.Object
 	kind := p.MIME
-	if r.URL.Query().Get("thumb") == "1" && p.Thumb != "" {
+	if r.URL.Query().Get("thumb") == "1" && p.Thumb != "" && !(it.Module == "images" && p.MIME == "image/gif") {
 		obj = p.Thumb
 		kind = "image/jpeg"
 	}

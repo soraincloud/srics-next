@@ -263,11 +263,11 @@ defineExpose({ open: () => open() });
               ? batchComic
                 ? "选择包含各本漫画文件夹的总目录，页序按数字排列"
                 : "一层图片目录，页序按文件名中的数字排列"
-              : module === "images" ? "自动编号，保留图片原件" : "保留原始文件及元数据"
+              : module === "images" ? "PNG / JPEG 无损转 WebP，WebP / GIF 保留原件" : "保留原始文件及元数据"
           }}
           · 单文件最多 {{ module === 'attachments' ? '10 GiB' : '64 MiB' }}</span>
       </button>
-      <p v-if="module === 'images' && !resume" class="subtle-copy">图片按 IMG-000001 等编号保存，原文件名不保留。</p>
+      <p v-if="module === 'images' && !resume" class="subtle-copy">WebP 与 GIF 混合保存，统一按 IMG-000001 等编号命名，不保留原文件名。</p>
       <input
           ref="input"
           type="file"

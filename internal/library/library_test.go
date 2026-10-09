@@ -42,6 +42,15 @@ func testLibrary(t *testing.T) *Library {
 }
 func hash(data []byte) string { h := sha256.Sum256(data); return hex.EncodeToString(h[:]) }
 
+func imageConverter(t *testing.T) media.Converter {
+	t.Helper()
+	binary, err := exec.LookPath("cwebp")
+	if err != nil {
+		t.Skip("requires cwebp for static image conversion")
+	}
+	return media.Converter{CWebP: binary}
+}
+
 func TestWebPThumbnailNeverReplacesOriginal(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "testdata", "media", "lossless-bare.webp"))
 	if err != nil {
@@ -77,7 +86,11 @@ func upload(t *testing.T, l *Library, module, name string, data []byte) Item {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = l.Receive(context.Background(), up.ID, 0, hash(data), bytes.NewReader(data), media.Converter{}); err != nil {
+	c := media.Converter{}
+	if module == "images" {
+		c = imageConverter(t)
+	}
+	if _, err = l.Receive(context.Background(), up.ID, 0, hash(data), bytes.NewReader(data), c); err != nil {
 		t.Fatal(err)
 	}
 	it, err := l.Finish(up.ID)

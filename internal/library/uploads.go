@@ -265,16 +265,11 @@ func (l *Library) Receive(ctx context.Context, id string, index int, sourceHash 
 		data = result.Data
 		mime = "image/webp"
 	} else if up.Module == "images" {
-		if mime != "image/jpeg" && mime != "image/png" && mime != "image/webp" && mime != "image/gif" {
-			return failed(errors.New("图片支持 JPEG、PNG、WebP、GIF；其他照片格式可保存到个人照片"))
+		result, kind, e := c.ImportImage(ctx, data)
+		if e != nil {
+			return failed(e)
 		}
-		cfg, _, e := image.DecodeConfig(bytes.NewReader(data))
-		if e != nil || cfg.Width < 1 || cfg.Height < 1 || int64(cfg.Width)*int64(cfg.Height) > media.MaxPixels {
-			return failed(errors.New("无法预览此图片或像素数超过 4000 万"))
-		}
-		if _, _, e = image.Decode(bytes.NewReader(data)); e != nil {
-			return failed(errors.New("图片内容损坏，请检查原文件"))
-		}
+		data, mime = result.Data, kind
 	}
 	if err = l.NeedSpace(int64(len(data)) * 2); err != nil {
 		return failed(err)
@@ -287,10 +282,12 @@ func (l *Library) Receive(ctx context.Context, id string, index int, sourceHash 
 	p.MIME = mime
 	if up.AutoName {
 		p.Name = up.Name + imageNameExtension(mime)
+	} else if up.Module == "images" && mime == "image/webp" {
+		p.Name = strings.TrimSuffix(f.Name, path.Ext(f.Name)) + ".webp"
 	}
 	// Thumbnails are replaceable display copies; source bytes and metadata stay intact.
 	// EXIF-oriented images use their original so the browser applies orientation.
-	if !hasOrientationMetadata(data) {
+	if !hasOrientationMetadata(data) && !(up.Module == "images" && mime == "image/gif") {
 		if thumb := thumbnail(data); len(thumb) > 0 {
 			tp, e := l.put(thumb)
 			if e == nil {

@@ -30,6 +30,8 @@ func TestRealLibraryEncryptedBackupAndIndependentRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := upload(t, l, "images", "same.png", fixture(t))
+	gifData := animatedImageFixture(t)
+	animation := upload(t, l, "images", "source-animation.gif", gifData)
 	photo := upload(t, l, "photos", "same.png", fixture(t))
 	if err = l.Trash(photo.ID, false); err != nil {
 		t.Fatal(err)
@@ -108,11 +110,19 @@ func TestRealLibraryEncryptedBackupAndIndependentRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	it, err := restored.Item(first.ID)
-	if err != nil || it.Name != first.Name || it.Pages[0].Name != "IMG-000001.png" || it.Pages[0].SHA256 != first.Pages[0].SHA256 {
+	if err != nil || it.Name != first.Name || it.Pages[0].Name != "IMG-000001.webp" || it.Pages[0].SHA256 != first.Pages[0].SHA256 {
 		t.Fatal("image reference lost", err)
 	}
+	recoveredAnimation, err := restored.Item(animation.ID)
+	if err != nil || recoveredAnimation.Pages[0].Name != "IMG-000002.gif" || recoveredAnimation.Pages[0].MIME != "image/gif" {
+		t.Fatal("GIF reference lost", err)
+	}
+	recoveredGIF, err := os.ReadFile(restored.ObjectPath(recoveredAnimation.Pages[0].Object))
+	if err != nil || !bytes.Equal(recoveredGIF, gifData) {
+		t.Fatal("independent restore changed GIF animation", err)
+	}
 	nextImage, err := restored.CreateUpload(imageRequest(NewID(), "after-disaster.png", len(fixture(t))))
-	if err != nil || nextImage.Name != "IMG-000002" {
+	if err != nil || nextImage.Name != "IMG-000003" {
 		t.Fatal("independent encrypted restore lost image numbering", nextImage, err)
 	}
 	trash, _ := restored.Items("all", true)
