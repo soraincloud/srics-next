@@ -19,6 +19,7 @@ import (
 
 	"filippo.io/age"
 	"github.com/soraincloud/srics-next/internal/atomicfile"
+	"github.com/soraincloud/srics-next/internal/media"
 	"github.com/soraincloud/srics-next/internal/vault"
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
@@ -215,8 +216,8 @@ func privateThumbnail(data []byte) ([]byte, error) {
 	if err != nil {
 		return nil, errors.New("照片格式暂不支持，请使用 JPEG、PNG、WebP 或 GIF")
 	}
-	if cfg.Width < 1 || cfg.Height < 1 || int64(cfg.Width)*int64(cfg.Height) > 40_000_000 {
-		return nil, errors.New("照片最多支持 4000 万像素")
+	if err := media.CheckPixels(cfg.Width, cfg.Height); err != nil {
+		return nil, err
 	}
 	if format != "jpeg" && format != "png" && format != "webp" && format != "gif" {
 		return nil, errors.New("照片格式暂不支持")

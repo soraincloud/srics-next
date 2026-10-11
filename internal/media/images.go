@@ -9,6 +9,9 @@ import (
 	"net/http"
 )
 
+// Keep the animation work budget independent of the single-image canvas limit.
+const MaxGIFFramePixels = 400_000_000
+
 // ImportImage preserves WebP and GIF bytes. Other supported static images use
 // the same lossless, pixel-verified converter as comic pages.
 func (c Converter) ImportImage(ctx context.Context, input []byte) (Result, string, error) {
@@ -32,8 +35,11 @@ func (c Converter) ImportImage(ctx context.Context, input []byte) (Result, strin
 func validateGIF(ctx context.Context, input []byte) (Result, error) {
 	invalid := errors.New("GIF 内容损坏或不完整，请检查原文件")
 	cfg, err := gif.DecodeConfig(bytes.NewReader(input))
-	if err != nil || cfg.Width < 1 || cfg.Height < 1 || int64(cfg.Width)*int64(cfg.Height) > MaxPixels || len(input) < 13 {
-		return Result{}, errors.New("GIF 无法解码或画布像素数超过 4000 万")
+	if err != nil || len(input) < 13 {
+		return Result{}, invalid
+	}
+	if err := CheckPixels(cfg.Width, cfg.Height); err != nil {
+		return Result{}, err
 	}
 	headerEnd := 13
 	if input[10]&0x80 != 0 {
@@ -88,7 +94,7 @@ func validateGIF(ctx context.Context, input []byte) (Result, error) {
 				return Result{}, invalid
 			}
 			pixels += int64(w) * int64(h)
-			if pixels > 10*MaxPixels {
+			if pixels > MaxGIFFramePixels {
 				return Result{}, errors.New("GIF 全部帧的总像素数超过 4 亿，请缩短动画后上传")
 			}
 			off += 10

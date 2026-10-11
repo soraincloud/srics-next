@@ -26,7 +26,7 @@ import (
 )
 
 const MaxInput = 64 << 20
-const MaxPixels = 40_000_000
+const MaxPixels = 100_000_000
 
 type Result struct {
 	Data          []byte
@@ -128,8 +128,23 @@ func (c Converter) Convert(ctx context.Context, input []byte) (Result, error) {
 	return Result{Data: encoded, Width: cfg.Width, Height: cfg.Height}, nil
 }
 func dimensions(w, h int) error {
-	if w < 1 || h < 1 || w > 16383 || h > 16383 || int64(w)*int64(h) > MaxPixels {
-		return errors.New("unsupported image dimensions or pixel budget")
+	if err := CheckPixels(w, h); err != nil {
+		return err
+	}
+	if w > 16383 || h > 16383 {
+		return fmt.Errorf("WebP 每边最多支持 16383 像素（当前 %d × %d）", w, h)
+	}
+	return nil
+}
+
+// CheckPixels is shared by original validation and ordinary/private previews.
+// Divide before comparing so even malformed dimensions cannot overflow.
+func CheckPixels(w, h int) error {
+	if w < 1 || h < 1 {
+		return errors.New("图片尺寸无效")
+	}
+	if int64(w) > MaxPixels/int64(h) {
+		return fmt.Errorf("单张图片最多支持 1 亿像素（当前 %d × %d）", w, h)
 	}
 	return nil
 }

@@ -309,7 +309,7 @@ func hasOrientationMetadata(data []byte) bool {
 }
 func thumbnail(data []byte) []byte {
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
-	if err != nil || cfg.Width < 1 || cfg.Height < 1 || int64(cfg.Width)*int64(cfg.Height) > media.MaxPixels {
+	if err != nil || media.CheckPixels(cfg.Width, cfg.Height) != nil {
 		return nil
 	}
 	src, _, err := image.Decode(bytes.NewReader(data))

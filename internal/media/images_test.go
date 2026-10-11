@@ -3,6 +3,7 @@ package media
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"image"
 	"image/color"
@@ -80,6 +81,23 @@ func TestImageImportRejectsCorruptLaterGIFFrames(t *testing.T) {
 	cancel()
 	if _, _, err := (Converter{}).ImportImage(ctx, data); !errors.Is(err, context.Canceled) {
 		t.Fatal("cancelled GIF validation continued", err)
+	}
+}
+
+func TestImageImportPreservesLargeGIFCanvas(t *testing.T) {
+	// Small frames on a 48 MP logical canvas exercise the raised limit without
+	// allocating a full canvas or re-encoding the original animation.
+	data := animationFixture(t)
+	binary.LittleEndian.PutUint16(data[6:8], 8000)
+	binary.LittleEndian.PutUint16(data[8:10], 6000)
+	result, kind, err := (Converter{}).ImportImage(context.Background(), data)
+	if err != nil || kind != "image/gif" || !result.Preserved || result.Width != 8000 || result.Height != 6000 || !bytes.Equal(data, result.Data) {
+		t.Fatal("large GIF canvas rejected or bytes changed", err)
+	}
+	binary.LittleEndian.PutUint16(data[6:8], 10000)
+	binary.LittleEndian.PutUint16(data[8:10], 10001)
+	if _, _, err := (Converter{}).ImportImage(context.Background(), data); err == nil {
+		t.Fatal("GIF exceeding 100 MP accepted")
 	}
 }
 

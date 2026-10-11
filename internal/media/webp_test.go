@@ -97,8 +97,11 @@ func TestRejectUnsupportedBeforeEncoder(t *testing.T) {
 			t.Fatal("unsupported input accepted")
 		}
 	}
-	if dimensions(16384, 1) == nil || dimensions(10000, 10000) == nil {
+	if dimensions(16384, 1) == nil || dimensions(10000, 10001) == nil {
 		t.Fatal("dimension budget ignored")
+	}
+	if err := dimensions(10000, 10000); err != nil {
+		t.Fatal("100 megapixel image rejected", err)
 	}
 }
 func TestLosslessPNG(t *testing.T) {
