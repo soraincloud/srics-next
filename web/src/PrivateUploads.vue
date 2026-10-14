@@ -2,6 +2,7 @@
 import { ref, watch, onMounted, onUnmounted } from "vue";
 import { vaultAPI, vaultOpen } from "./vault";
 import { sendTransfer, prepareTransfer, type Transfer } from "./transfers";
+import { preparePhotoSources } from "./photoSources";
 const props = defineProps<{ module: string }>();
 const emit = defineEmits<{ complete: [] }>();
 type Task = Partial<Transfer> & {
@@ -58,11 +59,20 @@ function chooseFiles(task?: Task) {
 defineExpose({ chooseFiles });
 async function choose(event: Event) {
   const input = event.target as HTMLInputElement;
-  const files = Array.from(input.files || []);
+  let files = Array.from(input.files || []);
   input.value = "";
   error.value = "";
   if (!files.length) return;
   if (busy.value) return;
+  if (props.module === "private") {
+    const epoch = generation;
+    abort = new AbortController();
+    busy.value = true;
+    try { files = await preparePhotoSources(files, abort.signal); }
+    catch (e) { if (epoch === generation) error.value = (e as Error).message; return; }
+    finally { if (epoch === generation) busy.value = false; }
+    if (epoch !== generation || !vaultOpen.value) return;
+  }
   if (resume.value) {
     const t = resume.value;
     if (
@@ -70,7 +80,9 @@ async function choose(event: Event) {
       files[0]!.name !== t.name ||
       files[0]!.size !== t.size
     ) {
-      error.value = "请选择该任务原来的单个文件";
+      error.value = t.name.toLowerCase().endsWith(".livephoto.zip")
+        ? "请同时选择该任务原来的同名照片与 MOV 视频"
+        : "请选择该任务原来的单个文件";
       return;
     }
     t.file = files[0];
@@ -167,10 +179,10 @@ async function cancel(task: Task) {
     ref="picker"
     type="file"
     hidden
-    :multiple="!resume"
+    :multiple="!resume || module === 'private'"
     :accept="
       module === 'private'
-        ? 'image/jpeg,image/png,image/webp,image/gif'
+        ? 'image/*,video/quicktime,.mov,.heic,.heif,.avif,.bmp,.tif,.tiff'
         : undefined
     "
     @change="choose"
@@ -194,7 +206,7 @@ async function cancel(task: Task) {
       ><small>{{ task.message }}</small
       ><template v-if="!busy && task.state !== 'complete'"
         ><button class="button small secondary" @click="chooseFiles(task)">
-          选择原文件继续</button
+          {{ task.name.toLowerCase().endsWith('.livephoto.zip') ? '选择照片与视频继续' : '选择原文件继续' }}</button
         ><button class="button small secondary" @click="cancel(task)">
           取消任务
         </button></template
@@ -209,7 +221,7 @@ async function cancel(task: Task) {
     </button>
     <p class="vault-hint">
       {{
-        module === "private" ? "原件最大 64 MiB。" : "单文件最大 10 GiB。"
+        module === "private" ? "原件最大 64 MiB。实况照片请选择同名照片与 MOV，合并为一条。" : "单文件最大 10 GiB。"
       }}分块和任务名称均加密保存。锁定或刷新后，重新选择原文件即可续传。
     </p>
   </section>

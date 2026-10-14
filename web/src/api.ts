@@ -72,7 +72,8 @@ export const previewURL = (item: Item, page = 0, thumb = true) =>
   `/api/items/${item.id}/pages/${page}${thumb ? "?thumb=1" : ""}`;
 export const canPreview = (page?: Page) =>
   !!page &&
-  ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(page.mime);
+  (["image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif", "image/avif", "image/bmp", "image/tiff", "application/x-srics-live-photo"].includes(page.mime) ||
+    (page.mime === "application/octet-stream" && /\.(heic|heif|avif|bmp|tiff?)$/i.test(page.name)));
 export function changed() {
   window.dispatchEvent(new Event("library-changed"));
 }

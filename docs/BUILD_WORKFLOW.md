@@ -4,7 +4,7 @@
 
 ## 环境
 
-- Go 1.27.1，或可自动下载该工具链的 Go；需要 C 编译器，因为服务使用 SQLite CGO。
+- Go 1.27.2，或可自动下载该工具链的 Go；需要 C 编译器，因为服务使用 SQLite CGO。
 - Node.js 22.12+ 或 24+、npm、Python 3.9+。
 - macOS App 打包需要完整 Xcode 27+、Icon Composer 和 actool；运行环境以最终随包组件的最高要求为准。当前交付为 Apple Silicon、macOS 27+。
 - `brew install webp` 提供 cwebp。restic 0.19.1 由脚本按固定源码校验值及 `scripts/restic/` 的依赖清单构建，不修改系统 Homebrew。

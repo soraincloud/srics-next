@@ -75,10 +75,11 @@ export async function vaultImage(
   id: string,
   original = false,
   signal?: AbortSignal,
+  motion = false,
 ) {
   const epoch = generation;
   const res = await fetch(
-    `/api/vault/items/${id}/${original ? "download" : "preview"}`,
+    `/api/vault/items/${id}/${motion ? "motion" : original ? "view" : "preview"}`,
     {
       cache: "no-store",
       signal: signal

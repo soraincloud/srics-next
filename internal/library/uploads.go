@@ -12,7 +12,6 @@ import (
 	_ "image/gif"
 	"image/jpeg"
 	"io"
-	"net/http"
 	"path"
 	"strings"
 	"time"
@@ -256,9 +255,25 @@ func (l *Library) Receive(ctx context.Context, id string, index int, sourceHash 
 	if err = ctx.Err(); err != nil {
 		return failed(err)
 	}
-	mime := http.DetectContentType(data)
+	mime := media.ImageMIME(data)
+	var display []byte
+	displayTransformed := false
+	if up.Module == "photos" && strings.HasSuffix(strings.ToLower(f.Name), ".livephoto.zip") {
+		bundle, e := media.ReadPhotoBundle(data)
+		if e != nil {
+			return failed(e)
+		}
+		defer bundle.Clear()
+		mime, display = media.PhotoBundleMIME, bundle.Image
+	}
 	if up.Module == "comics" {
-		result, e := c.Convert(ctx, data)
+		var result media.Result
+		var e error
+		if media.NeedsNativePreview(mime) {
+			result, e = c.ConvertNative(ctx, data)
+		} else {
+			result, e = c.Convert(ctx, data)
+		}
 		if e != nil {
 			return failed(e)
 		}
@@ -270,6 +285,18 @@ func (l *Library) Receive(ctx context.Context, id string, index int, sourceHash 
 			return failed(e)
 		}
 		data, mime = result.Data, kind
+	}
+	if len(display) == 0 {
+		display = data
+	}
+	if up.Module == "photos" && (media.NeedsNativePreview(media.ImageMIME(display)) || media.ImageMIME(display) == "image/jpeg" || media.ImageMIME(display) == "image/png") {
+		if preview, e := c.Preview(ctx, display, media.MaxPreviewEdge); e == nil {
+			display = preview.Data
+			displayTransformed = true
+		}
+	}
+	if err = ctx.Err(); err != nil {
+		return failed(err)
 	}
 	if err = l.NeedSpace(int64(len(data)) * 2); err != nil {
 		return failed(err)
@@ -287,8 +314,8 @@ func (l *Library) Receive(ctx context.Context, id string, index int, sourceHash 
 	}
 	// Thumbnails are replaceable display copies; source bytes and metadata stay intact.
 	// EXIF-oriented images use their original so the browser applies orientation.
-	if !hasOrientationMetadata(data) && !(up.Module == "images" && mime == "image/gif") {
-		if thumb := thumbnail(data); len(thumb) > 0 {
+	if (displayTransformed || !hasOrientationMetadata(display)) && !(up.Module == "images" && mime == "image/gif") {
+		if thumb := thumbnail(display); len(thumb) > 0 {
 			tp, e := l.put(thumb)
 			if e == nil {
 				p.Thumb = tp.Object

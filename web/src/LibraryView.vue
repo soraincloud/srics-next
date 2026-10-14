@@ -53,6 +53,8 @@ let generation = 0,
   observer: IntersectionObserver | undefined,
   readObserver: IntersectionObserver | undefined;
 const backupSavedAt = ref("");
+const viewMotion = ref(false), videoError = ref(false);
+watch(() => viewing.value?.id, () => { viewMotion.value = false; videoError.value = false; });
 const isComic = computed(() => props.module === "comics");
 const isFile = computed(() => props.module === "attachments");
 const { index: viewerIndex, moving: viewerMoving, canNext: viewerCanNext, advance: nextImage } =
@@ -627,6 +629,7 @@ onUnmounted(() => {
       ><header class="dialog-header">
         <span>{{ viewerIndex + 1 }} / {{ total }}</span>
         <div class="row-actions">
+          <button v-if="viewing.pages[0]?.mime === 'application/x-srics-live-photo'" class="button secondary small" @click="viewMotion = !viewMotion; videoError = false">{{ viewMotion ? '静态照片' : '动态画面' }}</button>
           <a
             class="button secondary small"
             :href="`/api/items/${viewing.id}/download`"
@@ -657,8 +660,10 @@ onUnmounted(() => {
           @click="nextImage(-1)"
         >
           <Icon name="chevron-left" /></button
-        ><img
-          v-if="canPreview(viewing.pages[0])"
+        ><video v-if="viewMotion && !videoError" :key="viewing.id" :src="`/api/items/${viewing.id}/motion`" controls playsinline preload="metadata" @error="videoError = true" />
+        <p v-else-if="viewMotion && videoError">浏览器无法播放此视频，请下载原件查看。</p>
+        <img
+          v-else-if="canPreview(viewing.pages[0])"
           :src="previewURL(viewing, 0, false)"
           :alt="viewing.pages[0]?.name"
         />

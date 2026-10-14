@@ -752,3 +752,4 @@ dialog::backdrop { background: rgba(0,0,0,.65); backdrop-filter: blur(6px); }
 .private-viewer-stage .private-image { min-width: 0; flex: 1; }
 .private-viewer-stage .icon-button { color: inherit; }
 @media (max-width: 720px) { .private-viewer-stage { gap: 4px; } }
+.viewer-image video,.private-viewer-stage video{display:block;max-width:calc(100% - 96px);max-height:72vh;border-radius:var(--radius,16px)}

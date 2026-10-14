@@ -2,6 +2,7 @@ package server
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/soraincloud/srics-next/internal/library"
+	"github.com/soraincloud/srics-next/internal/media"
 	"github.com/soraincloud/srics-next/internal/vault"
 )
 
@@ -260,6 +262,9 @@ func (a *LibraryAPI) privateAPI(w http.ResponseWriter, r *http.Request, parts []
 			methodNotAllowed(w, "PUT, PATCH")
 			return
 		}
+	case len(parts) == 5 && parts[2] == "items" && library.IDPattern.MatchString(parts[3]) && r.Method == "GET" && (parts[4] == "view" || parts[4] == "motion"):
+		a.privateView(w, r, s.vault, parts[3], parts[4] == "motion")
+		return
 	case len(parts) == 5 && parts[2] == "items" && library.IDPattern.MatchString(parts[3]) && r.Method == "GET" && (parts[4] == "download" || parts[4] == "preview"):
 		a.privateDownload(w, r, s.vault, []string{parts[3]}, false, parts[4] == "preview")
 		return
@@ -275,6 +280,62 @@ func (a *LibraryAPI) privateAPI(w http.ResponseWriter, r *http.Request, parts []
 		return
 	}
 	writeJSON(w, 200, result)
+}
+
+func (a *LibraryAPI) privateView(w http.ResponseWriter, r *http.Request, access *vault.Access, id string, motion bool) {
+	it, err := a.store.PrivateItem(access, id)
+	if err != nil || it.Module != "private" || it.Deleted != "" || it.Size > media.MaxInput || (motion && !it.LivePhoto) {
+		privateError(w, library.ErrMissing)
+		return
+	}
+	f, _, err := a.store.PrivateRead(r.Context(), access, it, false)
+	if err != nil {
+		privateError(w, err)
+		return
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, media.MaxInput+1))
+	defer clear(data)
+	if err != nil || len(data) > media.MaxInput {
+		privateError(w, errors.New("私密原件读取失败"))
+		return
+	}
+	if it.LivePhoto {
+		bundle, err := media.ReadPhotoBundle(data)
+		if err != nil {
+			privateError(w, err)
+			return
+		}
+		defer bundle.Clear()
+		data = bundle.Image
+		if motion {
+			data = bundle.Motion
+		}
+	}
+	kind := media.ImageMIME(data)
+	if motion {
+		kind = "video/quicktime"
+	} else if media.NeedsNativePreview(kind) {
+		preview, err := a.converter.Preview(r.Context(), data, media.MaxPreviewEdge)
+		if err != nil {
+			privateError(w, err)
+			return
+		}
+		defer clear(preview.Data)
+		data, kind = preview.Data, "image/png"
+	}
+	if !motion && kind != "image/png" && kind != "image/jpeg" && kind != "image/webp" && kind != "image/gif" {
+		privateError(w, errors.New("此格式请下载原件查看"))
+		return
+	}
+	if _, _, _, err := access.Snapshot(); err != nil {
+		privateError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", kind)
+	if _, err := io.Copy(vault.ContextWriter{Ctx: r.Context(), Writer: w}, bytes.NewReader(data)); err != nil {
+		panic(http.ErrAbortHandler)
+	}
 }
 
 type privateQuery struct {

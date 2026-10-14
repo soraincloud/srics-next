@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from "vue";
 import Icon from "./Icon.vue";
+import { preparePhotoSources } from "./photoSources";
 import { api, fileSize } from "./api";
 import {
   createUpload,
@@ -53,7 +54,7 @@ const invalid = computed(() =>
         ((batchComic.value
           ? f.webkitRelativePath.split("/").length !== 3
           : f.webkitRelativePath.split("/").length > 2) ||
-          !/\.(webp|jpe?g|png)$/i.test(f.name))),
+          !/\.(webp|jpe?g|png|heic|heif|avif|bmp|tiff?)$/i.test(f.name))),
   ),
 );
 const pending = computed(() =>
@@ -62,11 +63,17 @@ const pending = computed(() =>
       u.module === props.module && !["complete", "cancelled"].includes(u.state),
   ),
 );
-function choose(event: Event) {
+async function choose(event: Event) {
   batchIDs.value = [];
-  const files = Array.from(
+  let files = Array.from(
     (event.target as HTMLInputElement).files || [],
   ).filter((f) => props.module === "attachments" || !f.name.startsWith("."));
+  if (props.module === "photos") {
+    working.value = true;
+    try { files = await preparePhotoSources(files); }
+    catch (e) { selected.value = []; error.value = (e as Error).message; return; }
+    finally { working.value = false; }
+  }
   selected.value = files.sort(
     (a, b) =>
       a.name.localeCompare(b.name, "en", { numeric: true }) ||
@@ -263,11 +270,12 @@ defineExpose({ open: () => open() });
               ? batchComic
                 ? "选择包含各本漫画文件夹的总目录，页序按数字排列"
                 : "一层图片目录，页序按文件名中的数字排列"
-              : module === "images" ? "PNG / JPEG 无损转 WebP，WebP / GIF 保留原件" : "保留原始文件及元数据"
+              : module === "images" ? "静态图片无损转 WebP，GIF 保留原件" : "保留原始文件及元数据"
           }}
           · 单文件最多 {{ module === 'attachments' ? '10 GiB' : '64 MiB' }}</span>
       </button>
       <p v-if="module === 'images' && !resume" class="subtle-copy">WebP 与 GIF 混合保存，统一按 IMG-000001 等编号命名，不保留原文件名。</p>
+      <p v-if="module === 'photos' && !resume" class="subtle-copy">HEIC 等照片保留原件。实况照片请同时选择同名照片与 MOV，合并为一个条目。</p>
       <input
           ref="input"
           type="file"
@@ -277,7 +285,7 @@ defineExpose({ open: () => open() });
           :accept="
             module === 'comics' || module === 'photos' || module === 'attachments'
               ? undefined
-              : 'image/jpeg,image/png,image/webp,image/gif'
+              : 'image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,image/avif,image/bmp,image/tiff,.heic,.heif,.avif,.bmp,.tif,.tiff'
           "
           :disabled="working"
           @change="choose"

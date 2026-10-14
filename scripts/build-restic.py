@@ -13,7 +13,7 @@ root = pathlib.Path(__file__).resolve().parent.parent
 parser = argparse.ArgumentParser()
 parser.add_argument("--audit", action="store_true", help="check reachable vulnerabilities before building")
 args = parser.parse_args()
-env = dict(os.environ, GOTOOLCHAIN="go1.27.1", CGO_ENABLED="0")
+env = dict(os.environ, GOTOOLCHAIN="go1.27.2", CGO_ENABLED="0")
 source = json.loads(subprocess.check_output(
     ["go", "mod", "download", "-json", "github.com/restic/restic@v0.19.1"], cwd=root, env=env))
 expected = "h1:LQKkar5/gYxay1OCokAWPBNiLr1lTpt4fhdM4GWqSlY="
@@ -65,7 +65,7 @@ with tempfile.TemporaryDirectory(prefix="srics-restic-build-") as temp:
         shutil.copyfile(work / name, licenses / name)
     (licenses / "SOURCE.json").write_text(json.dumps({
         "module": source["Path"], "version": source["Version"], "sum": expected,
-        "toolchain": "go1.27.1", "build_tags": ["disable_grpc_modules"],
+        "toolchain": "go1.27.2", "build_tags": ["disable_grpc_modules"],
         "changes": "Dependency updates only; pinned go.mod/go.sum included. No upstream source changes."
     }, indent=2)+"\n")
     shutil.copyfile(binary, tools / "restic.new")

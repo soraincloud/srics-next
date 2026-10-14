@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -145,6 +146,48 @@ func TestUnifiedPackageSurvivesTotalMachineLoss(t *testing.T) {
 		t.Fatal(err)
 	}
 	originals[photo.ID] = original{module: "private", private: true, pages: [][]byte{webp}}
+	if runtime.GOOS == "darwin" {
+		heic, e := os.ReadFile(filepath.Join("..", "..", "testdata", "media", "synthetic-photo.heic"))
+		if e != nil {
+			t.Fatal(e)
+		}
+		movie, e := os.ReadFile(filepath.Join("..", "..", "testdata", "media", "synthetic-photo.MOV"))
+		if e != nil {
+			t.Fatal(e)
+		}
+		var buffer bytes.Buffer
+		z := zip.NewWriter(&buffer)
+		for _, part := range []struct {
+			name string
+			data []byte
+		}{{"synthetic-photo.heic", heic}, {"synthetic-photo.MOV", movie}} {
+			w, _ := z.CreateHeader(&zip.FileHeader{Name: part.name, Method: zip.Store})
+			w.Write(part.data)
+		}
+		z.Close()
+		for i, data := range [][]byte{heic, buffer.Bytes()} {
+			name := "synthetic-photo.heic"
+			if i == 1 {
+				name = "synthetic-photo.livephoto.zip"
+			}
+			up, e := l.CreateUpload(library.Upload{ID: library.NewID(), Module: "photos", Name: name, Files: []library.UploadFile{{Name: name, Size: int64(len(data))}}})
+			if e != nil {
+				t.Fatal(e)
+			}
+			if _, e = l.Receive(ctx, up.ID, 0, fmt.Sprintf("%x", sha256.Sum256(data)), bytes.NewReader(data), media.Converter{}); e != nil {
+				t.Fatal(e)
+			}
+			if _, e = l.Finish(up.ID); e != nil {
+				t.Fatal(e)
+			}
+			originals[up.ID] = original{module: "photos", pages: [][]byte{data}}
+			private, e := l.ReceivePrivate(ctx, a, library.NewID(), "private", name, int64(len(data)), bytes.NewReader(data))
+			if e != nil {
+				t.Fatal(e)
+			}
+			originals[private.ID] = original{module: "private", private: true, pages: [][]byte{data}}
+		}
+	}
 	a.Lock()
 	if err != nil {
 		t.Fatal(err)
@@ -396,8 +439,8 @@ func TestUnifiedPackageSurvivesTotalMachineLoss(t *testing.T) {
 		t.Fatal("missing recovery receipt")
 	}
 	items := recoveryCLI(t, ctx, binary, newConfigPath, "recovery-items", r)
-	if len(items.Items) != 9 {
-		t.Fatal("key-only listing did not recover all items, including the empty file")
+	if len(items.Items) != len(originals)+1 {
+		t.Fatal("key-only listing did not recover all items, including the empty file", len(items.Items), len(originals)+1)
 	}
 	seenModules := map[string]bool{}
 	for _, it := range items.Items {

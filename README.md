@@ -4,7 +4,7 @@
 
 Self-hosted personal library with private storage, encrypted backups, and disaster recovery.
 
-**当前版本：v0.3.0-rc29 · Build 35，公开测试版。Apple Silicon Mac，macOS 27.0 或更新版本。**
+**当前版本：v0.3.0-rc30 · Build 36，公开测试版。Apple Silicon Mac，macOS 27.0 或更新版本。**
 
 项目原创代码、文档和应用图标使用 [AGPL-3.0-only](LICENSE)。第三方组件保留各自许可，见 [第三方声明](THIRD_PARTY_NOTICES.md)。许可证不改变用户资料的归属。发布修改版或通过网络提供修改版时，应按 AGPL 提供相应源码。
 
@@ -34,19 +34,20 @@ Self-hosted personal library with private storage, encrypted backups, and disast
 
 所有日期备份保留，不自动删除；完整包需要额外空间。网盘同步目录的文件需等待同步完成。旧备份继续使用对应旧 JSON，兼容入口保留。
 
-## 七类资料
+## 八类资料
 
 | 模块 | 操作 |
 | --- | --- |
 | 漫画 | 文件夹导入、名称与标签搜索、第一页预览、连续阅读、整本 ZIP 下载 |
 | 小说 | 名称与标签搜索、完结状态切换与筛选、章节编辑 / 增删 / 排序、阅读位置保存与继续阅读、TXT 下载 |
 | 文档 | 新建 / 编辑 Markdown、名称与标签搜索、预览与阅读、MD 原文下载 |
-| 图片 | JPEG / PNG 无损转 WebP、GIF 保留动画；批量上传下载、列表与随机浏览、统一编号 |
-| 个人照片 | 原文件上传、列表、原件下载 |
-| 私密照片 | 独立解锁、加密上传下载、列表与随机浏览 |
+| 图片 | 普通静态图片无损转 WebP、GIF 保留动画；批量上传下载、列表与随机浏览、统一编号 |
+| 个人照片 | 原件上传、HEIC 等格式预览、列表、实况照片静态 / 动态切换、原件下载 |
+| 文件 | 普通文件原件上传、名称搜索、改名、下载与删除，无需解锁保险库 |
+| 私密照片 | 独立解锁、原件和预览加密、列表与随机浏览、实况照片及原件下载 |
 | 个人文件 | 加密保存、名称搜索、改名、下载与删除 |
 
-漫画与普通图片的已有静态 WebP 原样保存，支持的 JPEG / PNG 无损转为 WebP；普通图片的 GIF 保留全部原字节与动画。个人照片、私密照片与个人文件保留原始字节。文件分类和校验说明见 [存储与保真](docs/STORAGE_PRESERVATION.md)。
+漫画与普通图片的已有静态 WebP 原样保存，支持的普通静态 JPEG / PNG / HEIC / HEIF / AVIF / BMP / TIFF 无损转为 WebP；普通图片的 GIF 保留全部原字节与动画。已识别的高位深、HDR、深度和动态内容会提示保存到照片模块保留原件。个人照片、私密照片与普通 / 加密文件保留原始字节；实况照片按同名照片与 MOV 配对，下载容器保留两份原件。详见 [照片导入](docs/PHOTO_IMPORT.md) 和 [存储与保真](docs/STORAGE_PRESERVATION.md)。
 
 ## 更新与部署验收
 
@@ -56,9 +57,9 @@ Self-hosted personal library with private storage, encrypted backups, and disast
 
 ## 开发与维护
 
-运行结构是 Go 服务、Vue 网页、SQLite 和本地文件，App 随附 cwebp / restic，运行时无需 Go、Node.js 或 Homebrew。
+运行结构是 Go 服务、Vue 网页、SQLite 和本地文件，App 随附 cwebp、ImageIO 预览工具与 restic，运行时无需 Go、Node.js 或 Homebrew。
 
-源码构建需 Go 1.27.1（或支持下载该工具链的 Go）、Node.js 22.12+ 或 24+、Python 3.9+；macOS App 打包需完整 Xcode 27+，包含 Icon Composer 和 actool：
+源码构建需 Go 1.27.2（或支持下载该工具链的 Go）、Node.js 22.12+ 或 24+、Python 3.9+；macOS App 打包需完整 Xcode 27+，包含 Icon Composer 和 actool：
 
 ```sh
 brew install webp

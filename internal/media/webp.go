@@ -33,11 +33,14 @@ type Result struct {
 	Preserved     bool
 	Width, Height int
 }
-type Converter struct{ CWebP string }
+type Converter struct{ CWebP, NativePreview string }
 
 func (c Converter) Convert(ctx context.Context, input []byte) (Result, error) {
+	return c.convert(ctx, input, MaxInput)
+}
+func (c Converter) convert(ctx context.Context, input []byte, inputLimit int) (Result, error) {
 	var result Result
-	if len(input) > MaxInput {
+	if len(input) > inputLimit {
 		return result, errors.New("image exceeds 64 MiB verification limit")
 	}
 	if len(input) >= 12 && string(input[:4]) == "RIFF" && string(input[8:12]) == "WEBP" {
@@ -65,6 +68,9 @@ func (c Converter) Convert(ctx context.Context, input []byte) (Result, error) {
 	meta, err := sourceMetadata(input)
 	if err != nil {
 		return result, err
+	}
+	if IsMotionPhoto(input) {
+		return result, errors.New("图片含动态照片信息，请上传到个人照片以保留原件")
 	}
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(input))
 	if err != nil {
@@ -335,6 +341,9 @@ func sourceMetadata(data []byte) (map[string][]byte, error) {
 		}
 		p := data[off+2 : off+size]
 		off += size
+		if marker == 0xe2 && bytes.HasPrefix(p, []byte("MPF\x00")) {
+			return nil, errors.New("图片包含多图像或 HDR 附加信息，请上传到个人照片保留原件")
+		}
 		if (marker == 0xc0 || marker == 0xc2) && (len(p) == 0 || p[0] != 8) {
 			return nil, errors.New("non-8-bit JPEG is unsupported")
 		}

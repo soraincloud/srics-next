@@ -6,6 +6,7 @@ import SegmentedControl from "./SegmentedControl.vue";
 import EmptyState from "./EmptyState.vue";
 import { useGalleryNavigation } from "./gallery";
 import PrivateImage from "./PrivateImage.vue";
+import PrivateVideo from "./PrivateVideo.vue";
 import PrivateUploads from "./PrivateUploads.vue";
 import ActionConfirm from "./ActionConfirm.vue";
 const confirmation = ref<InstanceType<typeof ActionConfirm>>();
@@ -29,9 +30,11 @@ type Item = {
   created: string;
   deleted: string;
   revision: number;
+  livePhoto?: boolean;
 };
 const props = defineProps<{ module: string }>();
 const isPhoto = computed(() => props.module === "private");
+const viewMotion = ref(false);
 const title = computed(() => (isPhoto.value ? "私密照片" : "个人文件"));
 const passwordInput = ref<InstanceType<typeof PasswordInput>>();
 function hidePassword() { passwordInput.value?.hide(); }
@@ -58,6 +61,7 @@ const picker = ref<HTMLInputElement>(),
   editing = ref<Item>(),
   editName = ref(""),
   saving = ref(false);
+watch(() => viewing.value?.id, () => { viewMotion.value = false; });
 const { index: viewerIndex, moving: viewerMoving, canNext: viewerCanNext, advance: nextImage } =
   useGalleryNavigation(items, viewing, next, loading, () => load(true));
 const controller = new AbortController();
@@ -487,6 +491,7 @@ onUnmounted(() => {
       <template v-if="viewing"
         ><div class="private-viewer-toolbar">
           <span>{{ viewerIndex + 1 }} / {{ total }}</span>
+          <button v-if="viewing.livePhoto" class="button secondary small" @click="viewMotion = !viewMotion">{{ viewMotion ? '静态照片' : '动态画面' }}</button>
           <button class="icon-button" aria-label="锁定并关闭预览" @click="lock">
             <Icon name="lock" />
           </button>
@@ -518,7 +523,8 @@ onUnmounted(() => {
         <p v-if="viewerMoving" class="subtle-copy" role="status">正在加载下一张…</p>
         <div class="private-viewer-stage">
           <button class="icon-button" aria-label="上一张" :disabled="viewerIndex <= 0 || viewerMoving || loading" @click="nextImage(-1)"><Icon name="chevron-left" /></button>
-          <PrivateImage :key="viewing.id" :id="viewing.id" original />
+          <PrivateVideo v-if="viewMotion" :key="viewing.id" :id="viewing.id" />
+          <PrivateImage v-else :key="viewing.id" :id="viewing.id" original />
           <button class="icon-button" aria-label="下一张" :disabled="!viewerCanNext || viewerMoving || loading" @click="nextImage(1)"><Icon name="chevron-right" /></button>
         </div></template>
     </dialog>

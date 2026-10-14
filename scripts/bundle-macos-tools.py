@@ -64,8 +64,8 @@ def bundle(source):
     subprocess.run(['codesign', '--force', '--sign', '-', str(dest)], check=True)
     return dest
 
-for name in ['cwebp', 'restic']:
-    source = pathlib.Path('bin/tools/restic').resolve() if name == 'restic' else shutil.which(name)
+for name in ['cwebp', 'restic', 'srics-image-preview']:
+    source = pathlib.Path('bin/tools', name).resolve() if name != 'cwebp' else shutil.which(name)
     if not source:
         raise RuntimeError(f'Missing build tool: {name}')
     bundle(source)

@@ -15,6 +15,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"filippo.io/age"
@@ -43,6 +44,7 @@ type PrivateItem struct {
 	Seq        int64  `json:"seq"`
 	CipherHash string `json:"-"`
 	ThumbHash  string `json:"-"`
+	LivePhoto  bool   `json:"livePhoto,omitempty"`
 }
 
 // Bind logical metadata to the immutable ciphertext references. Only this JSON
@@ -212,6 +214,19 @@ func (l *Library) privatePut(ctx context.Context, src io.Reader, key *age.X25519
 	return id, hex.EncodeToString(h.Sum(nil)), nil
 }
 func privateThumbnail(data []byte) ([]byte, error) {
+	return privateThumbnailContext(context.Background(), data)
+}
+func privateThumbnailContext(ctx context.Context, data []byte) ([]byte, error) {
+	kind := media.ImageMIME(data)
+	if media.NeedsNativePreview(kind) || kind == "image/jpeg" || kind == "image/png" {
+		preview, err := (media.Converter{}).Preview(ctx, data, 640)
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if err == nil || media.NeedsNativePreview(kind) {
+			return preview.Data, err
+		}
+	}
 	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil {
 		return nil, errors.New("照片格式暂不支持，请使用 JPEG、PNG、WebP 或 GIF")
@@ -293,8 +308,18 @@ func (l *Library) ReceivePrivate(ctx context.Context, a *vault.Access, id, modul
 	if count.n != size {
 		return zero, errors.New("文件传输未完成或大小不一致")
 	}
+	live := module == "private" && strings.HasSuffix(strings.ToLower(name), ".livephoto.zip")
 	if module == "private" {
-		thumb, e := privateThumbnail(photo.Bytes())
+		image := photo.Bytes()
+		if live {
+			bundle, e := media.ReadPhotoBundle(image)
+			if e != nil {
+				return zero, e
+			}
+			defer bundle.Clear()
+			image = bundle.Image
+		}
+		thumb, e := privateThumbnailContext(ctx, image)
 		if e != nil {
 			return zero, e
 		}
@@ -304,7 +329,7 @@ func (l *Library) ReceivePrivate(ctx context.Context, a *vault.Access, id, modul
 			return zero, err
 		}
 	}
-	it := PrivateItem{ID: id, Module: module, Name: name, Original: name, Size: size, SHA256: hex.EncodeToString(h.Sum(nil)), Created: time.Now().UTC().Format(time.RFC3339Nano), Revision: 1, Object: r.object, Thumb: r.thumb}
+	it := PrivateItem{ID: id, Module: module, Name: name, Original: name, Size: size, SHA256: hex.EncodeToString(h.Sum(nil)), Created: time.Now().UTC().Format(time.RFC3339Nano), Revision: 1, Object: r.object, Thumb: r.thumb, LivePhoto: live}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	err = a.Commit(ctx, func() error {

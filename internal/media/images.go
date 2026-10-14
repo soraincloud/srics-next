@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"image/gif"
-	"net/http"
 )
 
 // Keep the animation work budget independent of the single-image canvas limit.
@@ -18,15 +17,18 @@ func (c Converter) ImportImage(ctx context.Context, input []byte) (Result, strin
 	if len(input) > MaxInput {
 		return Result{}, "", errors.New("单张图片不能超过 64 MiB")
 	}
-	switch http.DetectContentType(input) {
+	switch ImageMIME(input) {
 	case "image/gif":
 		result, err := validateGIF(ctx, input)
 		return result, "image/gif", err
 	case "image/webp", "image/png", "image/jpeg":
 		result, err := c.Convert(ctx, input)
 		return result, "image/webp", err
+	case "image/heic", "image/heif", "image/avif", "image/bmp", "image/tiff":
+		result, err := c.ConvertNative(ctx, input)
+		return result, "image/webp", err
 	default:
-		return Result{}, "", errors.New("图片支持 JPEG、PNG、WebP 和 GIF；其他格式可保存到个人照片")
+		return Result{}, "", errors.New("图片支持 JPEG、PNG、WebP、GIF、HEIC/HEIF、AVIF、BMP 和 TIFF；特殊照片请保留到个人照片")
 	}
 }
 

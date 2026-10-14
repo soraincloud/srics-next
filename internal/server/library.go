@@ -2,6 +2,7 @@ package server
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -322,6 +323,9 @@ func (a *LibraryAPI) handle(w http.ResponseWriter, r *http.Request) {
 		} else if len(parts) == 4 && parts[3] == "download" && (r.Method == "GET" || r.Method == "HEAD") {
 			a.download(w, r, id)
 			return
+		} else if len(parts) == 4 && parts[3] == "motion" && (r.Method == "GET" || r.Method == "HEAD") {
+			a.photoMotion(w, r, id)
+			return
 		} else if len(parts) == 5 && parts[3] == "pages" && (r.Method == "GET" || r.Method == "HEAD") {
 			a.page(w, r, id, parts[4])
 			return
@@ -524,7 +528,8 @@ func (a *LibraryAPI) page(w http.ResponseWriter, r *http.Request, id, n string) 
 		obj = p.Thumb
 		kind = "image/jpeg"
 	}
-	if kind != "image/png" && kind != "image/jpeg" && kind != "image/webp" && kind != "image/gif" {
+	native := media.NeedsNativePreview(kind) || kind == media.PhotoBundleMIME || (it.Module == "photos" && kind == "application/octet-stream")
+	if !native && kind != "image/png" && kind != "image/jpeg" && kind != "image/webp" && kind != "image/gif" {
 		apiError(w, 415, errors.New("此格式请下载原件查看"))
 		return
 	}
@@ -544,8 +549,72 @@ func (a *LibraryAPI) page(w http.ResponseWriter, r *http.Request, id, n string) 
 		apiError(w, 503, err)
 		return
 	}
+	if native {
+		input, err := io.ReadAll(io.LimitReader(f, media.MaxInput+1))
+		if err != nil || len(input) > media.MaxInput {
+			apiError(w, 413, errors.New("原件超过预览限制，请下载查看"))
+			return
+		}
+		if kind == media.PhotoBundleMIME {
+			bundle, err := media.ReadPhotoBundle(input)
+			if err != nil {
+				apiError(w, 503, err)
+				return
+			}
+			defer bundle.Clear()
+			input = bundle.Image
+		}
+		kind = media.ImageMIME(input)
+		if media.NeedsNativePreview(kind) {
+			edge := media.MaxPreviewEdge
+			if r.URL.Query().Get("thumb") == "1" {
+				edge = 640
+			}
+			preview, err := a.converter.Preview(r.Context(), input, edge)
+			if err != nil {
+				apiError(w, 415, err)
+				return
+			}
+			input, kind = preview.Data, "image/png"
+		}
+		if kind != "image/png" && kind != "image/jpeg" && kind != "image/webp" && kind != "image/gif" {
+			apiError(w, 415, errors.New("此格式请下载原件查看"))
+			return
+		}
+		w.Header().Set("Content-Type", kind)
+		http.ServeContent(w, r, p.Name, st.ModTime(), bytes.NewReader(input))
+		return
+	}
 	w.Header().Set("Content-Type", kind)
 	http.ServeContent(w, r, p.Name, st.ModTime(), f)
+}
+
+func (a *LibraryAPI) photoMotion(w http.ResponseWriter, r *http.Request, id string) {
+	it, err := a.store.Item(id)
+	if err != nil || it.Module != "photos" || it.Deleted != "" || it.Pages[0].MIME != media.PhotoBundleMIME {
+		http.NotFound(w, r)
+		return
+	}
+	p := it.Pages[0]
+	f, err := a.store.OpenOriginal(r.Context(), p)
+	if err != nil {
+		apiError(w, 503, err)
+		return
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, media.MaxInput+1))
+	if err != nil {
+		apiError(w, 503, err)
+		return
+	}
+	bundle, err := media.ReadPhotoBundle(data)
+	if err != nil {
+		apiError(w, 503, err)
+		return
+	}
+	defer bundle.Clear()
+	w.Header().Set("Content-Type", "video/quicktime")
+	http.ServeContent(w, r, bundle.MotionName, time.Time{}, bytes.NewReader(bundle.Motion))
 }
 func (a *LibraryAPI) download(w http.ResponseWriter, r *http.Request, id string) {
 	it, err := a.store.Item(id)
