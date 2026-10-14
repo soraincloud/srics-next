@@ -61,6 +61,8 @@ const picker = ref<HTMLInputElement>(),
   editing = ref<Item>(),
   editName = ref(""),
   saving = ref(false);
+const sentinel = ref<HTMLElement>();
+let observer: IntersectionObserver | undefined;
 watch(() => viewing.value?.id, () => { viewMotion.value = false; });
 const { index: viewerIndex, moving: viewerMoving, canNext: viewerCanNext, advance: nextImage } =
   useGalleryNavigation(items, viewing, next, loading, () => load(true));
@@ -76,6 +78,12 @@ function showError(e: unknown) {
 }
 function clearPrivate() {
   loadGeneration++;
+  observer?.disconnect();
+  clearTimeout(searchTimer);
+  next.value = "";
+  seed.value = "";
+  snapshot.value = 0;
+  loading.value = false;
   items.value = [];
   total.value = 0;
   selection.value = [];
@@ -159,11 +167,25 @@ async function load(more = false) {
     seed.value = result.seed;
     snapshot.value = result.snapshot;
   } catch (e) {
-    showError(e);
+    if (epoch === loadGeneration && vaultOpen.value) showError(e);
   } finally {
     if (epoch === loadGeneration) loading.value = false;
   }
 }
+watch(sentinel, (el) => {
+  observer?.disconnect();
+  observer = undefined;
+  if (el && vaultOpen.value) {
+    observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && vaultOpen.value && next.value && !loading.value && !error.value)
+          void load(true);
+      },
+      { rootMargin: "300px" },
+    );
+    observer.observe(el);
+  }
+});
 watch([trash, random], () => void load());
 function search() {
   clearTimeout(searchTimer);
@@ -474,12 +496,12 @@ onUnmounted(() => {
       <button v-if="query" class="button secondary small" @click="query = ''; load()">清除搜索</button>
       <button v-else-if="!trash" class="button secondary small" @click="uploader?.chooseFiles()"><Icon name="upload" />{{ isPhoto ? '上传照片' : '上传文件' }}</button>
     </EmptyState>
-    <div class="private-more">
-      <span v-if="loading">正在加载…</span
-      ><button v-else-if="next" class="button secondary" @click="load(true)">
-        加载更多
+    <div v-if="next" ref="sentinel" class="load-more">
+      <button class="button secondary" :disabled="loading" @click="load(true)">
+        {{ loading ? "正在加载…" : "加载更多" }}
       </button>
     </div>
+    <p v-else-if="loading" class="loading-copy" role="status">正在读取资料…</p>
     <dialog
       ref="viewer"
       class="private-viewer"
