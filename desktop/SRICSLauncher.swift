@@ -71,8 +71,10 @@ struct ServiceStatus: Codable, Sendable {
     var certificate: String
     var certFingerprint: String
     var networkError: String
+    var serviceError: String?
     var dataError: String?
     var cloudCheck: String
+    var passwordSettingsAvailable: Bool { (dataError ?? "").isEmpty && (!running || (networkError.isEmpty && (serviceError ?? "").isEmpty)) }
 }
 struct ConfigureRequest: Encodable, Sendable {
     var config: LocalConfig
@@ -133,10 +135,11 @@ func runManager(_ action: String, payload: Data? = nil) throws -> ServiceStatus 
     @Published var invalidField: String?
     @Published var validationAttempt = 0
     var running: Bool { status?.running == true }
+    var connectionFailed: Bool { !(status?.networkError ?? "").isEmpty || !(status?.serviceError ?? "").isEmpty }
     var saved: Bool { status?.saved == true }
     var passwordSet: Bool { status?.passwordSet == true }
     var passwords: PasswordSettings { PasswordSettings(current: currentPassword, login: password, loginConfirmation: repeatedPassword, currentVault: currentVaultPassword, vault: vaultPassword, vaultConfirmation: repeatedVaultPassword) }
-    var changed: Bool { config != status?.config || port != String(status?.config.port ?? 19473) || passwords.hasDraft || vaultIdleMinutes != (status?.vaultIdleMinutes ?? 10) }
+    var changed: Bool { config != status?.config || port != String(status?.config.port ?? 19473) || passwords.hasDraft || (status?.passwordSettingsAvailable == true && vaultIdleMinutes != status?.vaultIdleMinutes) }
     func showIssues(_ issues: [PasswordIssue]) {
         fieldErrors = Dictionary(issues.map { ($0.field, $0.message) }, uniquingKeysWith: { first, _ in first })
         invalidField = issues.first?.field
@@ -150,7 +153,10 @@ func runManager(_ action: String, payload: Data? = nil) throws -> ServiceStatus 
         Task {
             do {
                 let result = try await Task.detached { try runManager("info") }.value
-                if status == nil || !changed { config = result.config; port = String(result.config.port); vaultIdleMinutes = result.vaultIdleMinutes }
+                if status == nil || !changed {
+                    config = result.config; port = String(result.config.port)
+                    if result.passwordSettingsAvailable { vaultIdleMinutes = result.vaultIdleMinutes }
+                }
                 status = result
             } catch { message = error.localizedDescription; failed = true }
             busy = false
@@ -180,6 +186,7 @@ func runManager(_ action: String, payload: Data? = nil) throws -> ServiceStatus 
             do {
                 var result = try await Task.detached { if let updater { return try updater.run(action, payload: Data(), as: ServiceStatus.self) }; return try runManager(action, payload: request) }.value
                 status = result; config = result.config; port = String(result.config.port)
+                if result.passwordSettingsAvailable { vaultIdleMinutes = result.vaultIdleMinutes }
                 if action == "configure" { password = ""; repeatedPassword = ""; currentPassword = ""; vaultPassword = ""; repeatedVaultPassword = ""; currentVaultPassword = "" }
                 if startAfter {
                     let check = loginToVerify.isEmpty ? nil : try JSONEncoder().encode(["password": loginToVerify])
@@ -251,8 +258,8 @@ struct LauncherView: View {
             Text("本机配置").font(.system(size: 13)).foregroundStyle(GlobalPalette.muted)
             Spacer()
             HStack(spacing: 7) {
-                Circle().fill(model.running ? Color.green : GlobalPalette.muted).frame(width: 6, height: 6)
-                Text(model.running ? "运行中" : model.saved ? "已停止" : "尚未配置").font(.system(size: 12, weight: .medium))
+                Circle().fill(model.connectionFailed ? Color.orange : model.running ? Color.green : GlobalPalette.muted).frame(width: 6, height: 6)
+                Text(model.connectionFailed ? "连接异常" : model.running ? "运行中" : model.saved ? "已停止" : "尚未配置").font(.system(size: 12, weight: .medium))
             }
             Button { model.refresh() } label: { Image(systemName: "arrow.clockwise") }
                 .help("刷新状态").accessibilityLabel("刷新状态").disabled(model.busy)
@@ -297,9 +304,10 @@ struct LauncherView: View {
                 Picker("访问范围", selection: $model.config.lanAddress) {
                     Text("仅本机").tag("")
                     ForEach(Array(Set((model.status?.lanAddresses ?? []) + (model.config.lanAddress.isEmpty ? [] : [model.config.lanAddress]))).sorted(), id: \.self) { address in
-                        Text("局域网 · \(address)").tag(address)
+                        Text("局域网 · \(address)\((model.status?.lanAddresses.contains(address) == false) ? "（已失效）" : "")").tag(address)
                     }
-                }
+                }.id("lanAddress")
+                if let error = model.fieldErrors["lanAddress"] { Text(error).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
                 if !model.config.lanAddress.isEmpty {
                     Text("局域网使用 HTTPS。保存后导出公共证书，在访问设备上安装并信任；建议在路由器中固定此 IP。").font(.caption).foregroundStyle(.secondary)
                 }
@@ -320,13 +328,18 @@ struct LauncherView: View {
                 Text("资料和密码随备份恢复。新机需重新设置备份路径、云端凭据和局域网 HTTPS；确认可用前保留旧机资料。").font(.caption).foregroundStyle(.secondary)
             }
         }
-        if pane == .security && model.passwordSet {
+        if pane == .security && model.running && model.connectionFailed {
+            GlobalCard("无法读取密码配置", icon: "exclamationmark.triangle") {
+                Text("服务连接异常，暂时无法确认密码设置。请先停止服务并恢复连接；已有密码无需重新设置。")
+            }
+        }
+        if pane == .security && model.passwordSet && !(model.running && model.connectionFailed) {
             GlobalCard("忘记登录密码", icon: "lock.rotation") {
                 Button("重设登录密码…") { showLoginReset = true }
                 Text("在本机重新设置浏览器登录密码，不影响保险库口令。").font(.caption).foregroundStyle(.secondary)
             }.disabled(model.busy)
         }
-        if pane == .security {
+        if pane == .security && !(model.running && model.connectionFailed) {
             GlobalCard(model.passwordSet ? "修改登录密码（可选）" : "登录密码", icon: "key") {
                 Text("用于浏览器登录资料库；保险库口令不用于此处登录。").font(.caption).foregroundStyle(.secondary)
                 if model.passwordSet { PasswordField(title: "当前登录密码", text: $model.currentPassword, error: model.fieldErrors["currentPassword"]).id("currentPassword") }
@@ -334,7 +347,7 @@ struct LauncherView: View {
                 PasswordField(title: "确认登录密码", text: $model.repeatedPassword, placeholder: "再次输入登录密码", error: model.fieldErrors["repeatedPassword"]).id("repeatedPassword")
             }.disabled(model.busy || model.running)
         }
-        if pane == .security {
+        if pane == .security && !(model.running && model.connectionFailed) {
             GlobalCard(model.status?.vaultSet == true ? "修改保险库口令（可选）" : "设置保险库口令（可选）", icon: "lock.shield") {
                 if model.status?.vaultSet == true { PasswordField(title: "当前保险库口令", text: $model.currentVaultPassword, error: model.fieldErrors["currentVaultPassword"]).id("currentVaultPassword") }
                 PasswordField(title: model.status?.vaultSet == true ? "新保险库口令" : "保险库口令", text: $model.vaultPassword, placeholder: model.status?.vaultSet == true ? "留空则保留原口令" : "可选，12–1024 字节", error: model.fieldErrors["vaultPassword"]).id("vaultPassword")
@@ -424,7 +437,10 @@ struct LauncherView: View {
                 Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled)
             }
             if let status = model.status, !status.networkError.isEmpty {
-                Text(status.networkError).font(.caption).foregroundStyle(.red)
+                Text(status.networkError).font(.caption).foregroundStyle(.red).textSelection(.enabled)
+            }
+            if let error = model.status?.serviceError, !error.isEmpty {
+                Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled)
             }
             if let status = model.status, !status.certificate.isEmpty {
                 HStack {
@@ -451,7 +467,7 @@ struct LauncherView: View {
                 if model.busy { ProgressView().controlSize(.small) }
                 if model.running {
                     Button("停止服务") { model.perform("stop") }
-                    Button("打开资料库") { if let url = URL(string: model.status?.url ?? "") { NSWorkspace.shared.open(url) } }.buttonStyle(RecoveryActionStyle())
+                    Button("打开资料库") { if let url = URL(string: model.status?.url ?? "") { NSWorkspace.shared.open(url) } }.buttonStyle(RecoveryActionStyle()).disabled(model.connectionFailed)
                 } else {
                     Button("保存配置") { model.perform("configure") }.disabled(model.saved && !model.changed)
                     Button(model.saved && !model.changed ? "启动服务" : "保存并启动") {
@@ -488,7 +504,7 @@ struct LauncherView: View {
                     }.id(pane)
                     .onChange(of: model.validationAttempt) { _ in
                         guard let field = model.invalidField else { return }
-                        pane = field == "port" ? .service : .security
+                        pane = (field == "port" || field == "lanAddress") ? .service : .security
                         DispatchQueue.main.async { proxy.scrollTo(field, anchor: .center) }
                     }
                     }
@@ -502,6 +518,7 @@ struct LauncherView: View {
         .tint(GlobalPalette.ink).buttonStyle(GlobalButtonStyle())
         .textFieldStyle(GlobalTextFieldStyle()).toggleStyle(.switch)
         .task { model.refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in model.refresh() }
         .sheet(isPresented: $showRecovery) { RecoveryView(config: model.config) { model.status = nil; model.refresh() } }
         .sheet(isPresented: $showMigration) { MigrationView(model: model) }
         .sheet(isPresented: $showBackupPackage) { UnifiedBackupView(config: model.config, vaultConfigured: model.status?.vaultSet == true, exportOnly: true) { model.status = nil; model.refresh() } }

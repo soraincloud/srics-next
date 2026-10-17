@@ -23,20 +23,46 @@ export async function api<T = any>(
   if (csrf.value) headers.set("X-SRICS-CSRF", csrf.value);
   if (typeof options.body === "string")
     headers.set("Content-Type", "application/json");
-  let response: Response;
+  const bounded = path === "/api/auth" || path === "/api/auth/login" || path === "/api/auth/logout";
+  const controller = bounded ? new AbortController() : undefined;
+  let timedOut = false;
+  const abort = () => controller?.abort(options.signal?.reason);
+  if (controller) {
+    if (options.signal?.aborted) abort();
+    else options.signal?.addEventListener("abort", abort, { once: true });
+  }
+  const timer = controller ? setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, 20_000) : undefined;
   try {
-    response = await fetch(path, { ...options, headers, cache: "no-store" });
+    const response = await fetch(path, {
+      ...options,
+      headers,
+      cache: "no-store",
+      signal: controller?.signal ?? options.signal,
+    });
+    const data = await response.json().catch((error) => {
+      if (timedOut || options.signal?.aborted) throw error;
+      return {};
+    });
+    if (response.status === 401 && !path.startsWith("/api/auth/")) {
+      expireSession();
+    }
+    if (!response.ok)
+      throw new APIError(data.error || "操作失败，请稍后再试", response.status);
+    return data as T;
   } catch (error) {
+    if (options.signal?.aborted) throw error;
+    if (timedOut)
+      throw new APIError("服务响应超时，请在本机 App 检查服务状态和访问地址；局域网 IP 可能已变化。", 0);
+    if (error instanceof APIError) throw error;
     if (error instanceof Error && error.name === "AbortError") throw error;
     throw new APIError("无法连接服务，请确认本机程序正在运行后重试", 0);
+  } finally {
+    clearTimeout(timer);
+    options.signal?.removeEventListener("abort", abort);
   }
-  const data = await response.json().catch(() => ({}));
-  if (response.status === 401 && !path.startsWith("/api/auth/")) {
-    expireSession();
-  }
-  if (!response.ok)
-    throw new APIError(data.error || "操作失败，请稍后再试", response.status);
-  return data as T;
 }
 export const jsonBody = (value: unknown) => JSON.stringify(value);
 export const fileSize = (n: number) =>

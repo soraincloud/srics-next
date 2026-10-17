@@ -44,6 +44,7 @@ type managerStatus struct {
 	Certificate      string         `json:"certificate"`
 	CertFingerprint  string         `json:"certFingerprint"`
 	NetworkError     string         `json:"networkError"`
+	ServiceError     string         `json:"serviceError"`
 	DataError        string         `json:"dataError"`
 	CloudCheck       string         `json:"cloudCheck"`
 }
@@ -63,19 +64,22 @@ func readManagerStatus(ctx context.Context, path string) (managerStatus, error) 
 	if err != nil {
 		return s, err
 	}
-	addresses, _ := net.InterfaceAddrs()
-	for _, address := range addresses {
-		ip, _, err := net.ParseCIDR(address.String())
-		if err == nil && ip.IsPrivate() {
-			s.LANAddresses = append(s.LANAddresses, ip.String())
-		}
+	s.LANAddresses, err = localLANAddresses()
+	if err != nil {
+		s.LANAddresses = []string{}
+		s.NetworkError = "无法读取本机网络地址，请检查网络后刷新状态"
+	} else if err = checkLANAddress(c.LANAddress, s.LANAddresses); err != nil {
+		s.NetworkError = err.Error()
 	}
 	transport := &http.Transport{Proxy: nil}
 	defer transport.CloseIdleConnections()
 	if c.LANAddress != "" {
 		roots, fingerprint, err := localtls.Authority(tlsDirectory(path))
 		if err != nil {
-			s.NetworkError = "HTTPS 证书不可用，请检查配置目录，或停止服务后切回仅本机访问"
+			if s.NetworkError != "" {
+				s.NetworkError += "\n"
+			}
+			s.NetworkError += "HTTPS 证书不可用，请检查配置目录，或停止服务后切回仅本机访问"
 		} else {
 			s.Certificate, s.CertFingerprint = filepath.Join(tlsDirectory(path), localtls.PublicFile), fingerprint
 			transport.TLSClientConfig = &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS13}
@@ -89,20 +93,13 @@ func readManagerStatus(ctx context.Context, path string) (managerStatus, error) 
 		if s.NetworkError != "" {
 			return s, nil
 		}
-		client := &http.Client{Timeout: time.Second, Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-		res, err := client.Get(s.URL + "/api/auth")
-		if err == nil {
-			defer res.Body.Close()
-			var auth struct {
-				Configured       bool `json:"configured"`
-				VaultConfigured  bool `json:"vaultConfigured"`
-				VaultIdleMinutes int  `json:"vaultIdleMinutes"`
-			}
-			if res.StatusCode == 200 && json.NewDecoder(io.LimitReader(res.Body, 4096)).Decode(&auth) == nil {
-				s.PasswordSet = auth.Configured
-				s.VaultSet = auth.VaultConfigured
-				s.VaultIdleMinutes = auth.VaultIdleMinutes
-			}
+		auth, err := probeManagedService(ctx, s.URL, transport)
+		if err != nil {
+			s.ServiceError = "后台进程仍在运行，但资料库未能通过响应检查。请检查运行日志，停止服务后重新启动；无需重新设置密码。"
+		} else {
+			s.PasswordSet = auth.Configured
+			s.VaultSet = auth.VaultConfigured
+			s.VaultIdleMinutes = auth.VaultIdleMinutes
 		}
 	} else if l, err := library.Open(c.Data); err == nil {
 		hash, err := l.Setting("password")
@@ -150,6 +147,12 @@ func startManaged(ctx context.Context, path string) error {
 	if err != nil {
 		return err
 	}
+	if s.NetworkError != "" {
+		return &fieldError{Field: "lanAddress", Message: s.NetworkError}
+	}
+	if s.ServiceError != "" {
+		return errors.New(s.ServiceError)
+	}
 	if s.Running && s.PasswordSet {
 		return nil
 	}
@@ -176,7 +179,7 @@ func startManaged(ctx context.Context, path string) error {
 	}
 	listener, err := net.Listen("tcp", s.Config.address())
 	if err != nil {
-		return errors.New("端口已占用，请停止旧服务或更换端口")
+		return listenError(s.Config.address(), err)
 	}
 	listener.Close()
 	if serviceLoaded(ctx, path) {

@@ -142,7 +142,7 @@ func run(args []string) error {
 		}
 		listener, err := net.Listen("tcp", *address)
 		if err != nil {
-			return err
+			return listenError(*address, err)
 		}
 		l, err := openLibrary(*data)
 		if err != nil {
